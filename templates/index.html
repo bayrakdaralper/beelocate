@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>BeeLocate PRO</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@popperjs/core@2"></script>
+<script src="https://unpkg.com/tippy.js@6"></script>
+
+<script>
+    tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#FFC107", "primary-hover": "#FFB300", "bg-dark": "#212121", "surface": "#1a1a1a" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
+</script>
+<style>
+    #map { height: 100vh; width: 100vw; z-index: 0; }
+    .radar-spinner { width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, rgba(255, 193, 7, 0.5) 100%); animation: radar-spin 1.5s linear infinite; position: relative; }
+    .radar-spinner::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: #212121; }
+    @keyframes radar-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #FFC107; margin-top: -6px; cursor: pointer; }
+    input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #444; border-radius: 2px; }
+    .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body class="bg-bg-dark text-white font-display overflow-hidden">
+
+    <div class="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 md:w-[600px] z-20 flex flex-col gap-3 pointer-events-none">
+        <div class="flex justify-between items-center px-2 pointer-events-auto">
+            <div class="flex items-center gap-2 drop-shadow-md bg-black/40 px-3 py-1 rounded-full backdrop-blur cursor-pointer" onclick="window.location.href='/'">
+                <span class="material-symbols-outlined text-primary text-3xl">hive</span>
+                <h1 class="text-xl font-bold tracking-tight">BeeLocate <span class="text-primary">PRO</span></h1>
+            </div>
+            <div class="bg-black/50 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex">
+                <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
+                <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition">EN</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="fixed bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-3 w-full max-w-sm px-4" id="analyze-container">
+        <div class="bg-black/80 backdrop-blur-md p-4 rounded-2xl border border-white/10 w-full animate-fade-in-up space-y-4">
+            <div class="flex items-center bg-white/10 rounded-xl px-3 h-10 border border-white/5 focus-within:border-primary transition">
+                <span class="material-symbols-outlined text-gray-400 text-lg">search</span>
+                <input id="search-input" class="bg-transparent border-none text-white text-sm w-full ml-2 focus:outline-none placeholder-gray-500" 
+                       placeholder="Şehir veya bölge ara... (Enter)" onkeypress="handleSearch(event)">
+            </div>
+            <div>
+                <div class="flex justify-between text-[10px] text-gray-400 mb-2 font-bold uppercase tracking-wider">
+                    <span id="lbl-rad">Tarama Çapı</span>
+                    <span class="text-primary" id="rad-val">2000m</span>
+                </div>
+                <input type="range" id="radius-slider" min="1000" max="5000" step="500" value="2000" oninput="updateRadius(this.value)">
+            </div>
+        </div>
+        <button onclick="runSmartAnalysis()" class="flex items-center justify-center gap-3 h-14 w-full bg-primary hover:bg-primary-hover text-[#181610] rounded-2xl shadow-xl transform transition active:scale-95 animate-fade-in-up" style="animation-delay: 0.1s;">
+            <span class="material-symbols-outlined text-2xl">query_stats</span>
+            <span class="font-bold text-base tracking-wide uppercase" id="btn-analyze-text">KONUMU ANALİZ ET</span>
+        </button>
+    </div>
+
+    <div id="loading-screen" class="fixed inset-0 bg-bg-dark/95 z-50 hidden flex-col items-center justify-center text-center">
+        <div class="radar-spinner mb-8"></div>
+        <h2 class="text-2xl font-bold mb-4" id="loading-title">Saha Taranıyor...</h2>
+        <div class="w-80 h-40 overflow-hidden relative">
+            <div id="log-container" class="flex flex-col items-center gap-2 text-sm text-gray-400 font-mono transition-all duration-300"></div>
+            <div class="absolute bottom-0 w-full h-10 bg-gradient-to-t from-bg-dark to-transparent"></div>
+        </div>
+    </div>
+
+    <div id="result-modal" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onclick="closeModal(event)">
+        <button onclick="closeModalBtn()" class="absolute top-6 right-6 z-50 bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-3 transition shadow-lg backdrop-blur-md">
+            <span class="material-symbols-outlined text-3xl">close</span>
+        </button>
+
+        <div class="bg-[#1e1e1e] w-full max-w-6xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[750px] relative" onclick="event.stopPropagation()">
+            
+            <div class="w-full md:w-1/3 bg-[#252525] p-8 flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative">
+                <div>
+                    <div class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-6">
+                        <span class="size-2 rounded-full bg-green-500 animate-pulse"></span>
+                        <span class="text-xs font-bold text-gray-300" id="lbl-live">CANLI ANALİZ</span>
+                    </div>
+                    <div class="text-gray-400 text-sm font-bold uppercase tracking-widest mb-2" id="lbl-score">GENEL SKOR</div>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-8xl font-black text-primary" id="score-val">0</span>
+                        <span class="text-2xl text-gray-500 font-bold">/100</span>
+                    </div>
+                    <div class="mt-4 text-green-400 font-bold text-xl flex items-center gap-2">
+                        <span class="material-symbols-outlined">trending_up</span>
+                        <span id="score-comment">--</span>
+                    </div>
+                </div>
+                <div class="mt-6 p-4 bg-black/20 rounded-xl border-l-2 border-primary">
+                    <p class="text-sm text-gray-300 leading-relaxed" id="dynamic-text">...</p>
+                </div>
+                <div class="mt-auto opacity-30 text-[10px] uppercase tracking-widest text-center">AI Powered Feasibility Engine</div>
+            </div>
+
+            <div class="w-full md:w-2/3 p-8 relative overflow-y-auto no-scrollbar bg-[#1e1e1e]">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-bold text-white" id="lbl-details">Detaylı Saha Karnesi</h3>
+                    <button onclick="downloadReport()" class="bg-primary hover:bg-primary-hover text-black px-6 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-lg">
+                        <span class="material-symbols-outlined">download</span> <span id="btn-dl">Raporu İndir</span>
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="metrics-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const T = {
+            'TR': { 
+                ph:'Şehir veya bölge ara... (Enter)', btn:'KONUMU ANALİZ ET', load:'Saha Taranıyor...', 
+                logs:['Harita Verisi İndiriliyor...','Uydu Görüntüsü İşleniyor...','Su Kaynakları Hesaplanıyor...','Rapor Oluşturuluyor...'], 
+                live:'CANLI ANALİZ', score:'GENEL SKOR', dl:'PDF İNDİR', rad:'Tarama Çapı', det:'Detaylı Saha Karnesi', 
+                high:'Yüksek Potansiyel', risk:'Orta/Riskli', not_found:'Tespit Edilemedi', access_err:'Erişim Zor / Yok',
+                dirs: {"N": "Kuzey", "NE": "Kuzeydoğu", "E": "Doğu", "SE": "Güneydoğu", "S": "Güney", "SW": "Güneybatı", "W": "Batı", "NW": "Kuzeybatı"},
+                lbl: {flora:'FLORA', water:'SU KAYNAĞI', wind:'RÜZGAR', aspect:'BAKI (YÖN)', hum:'NEM', slope:'EĞİM', road:'ULAŞIM', build:'YERLEŞİM', elev:'RAKIM', temp:'SICAKLIK'},
+                summary: "Bölgede <b>{flora}</b> hakimiyeti görülmüştür. Hakim rüzgar <b>{wind}</b> yönündedir. Su kaynağı {water}."
+            },
+            'EN': { 
+                ph:'Search location... (Enter)', btn:'ANALYZE LOCATION', load:'Scanning Field...', 
+                logs:['Downloading Map Data...','Processing Satellite Data...','Calculating Water Sources...','Generating Report...'], 
+                live:'LIVE ANALYSIS', score:'OVERALL SCORE', dl:'DOWNLOAD PDF', rad:'Scan Radius', det:'Detailed Field Report', 
+                high:'High Potential', risk:'Medium/Risky', not_found:'Not Detected', access_err:'Hard Access / Far',
+                dirs: {"N": "North", "NE": "Northeast", "E": "East", "SE": "Southeast", "S": "South", "SW": "Southwest", "W": "West", "NW": "Northwest"},
+                lbl: {flora:'FLORA', water:'WATER', wind:'WIND', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'ACCESS', build:'BUILDINGS', elev:'ELEVATION', temp:'TEMP'},
+                summary: "Area dominated by <b>{flora}</b>. Prevailing wind is <b>{wind}</b>. Water source is {water}."
+            }
+        };
+        
+        let lang = 'TR';
+        let sLat, sLng, radius = 2000;
+        let currentData = null; 
+        let map, marker, circle, heatLayerGroup;
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([39.7766, 30.5206], 13);
+            var sat = L.tileLayer('http://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', {attribution:'Google'});
+            sat.addTo(map);
+            L.control.zoom({position:'bottomright'}).addTo(map);
+            heatLayerGroup = L.layerGroup().addTo(map);
+            map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
+        }
+
+        function updateLocation(lat, lng) {
+            if(marker) map.removeLayer(marker); 
+            heatLayerGroup.clearLayers();
+            sLat = lat; sLng = lng;
+            marker = L.marker([lat, lng]).addTo(map);
+            updateCircle();
+            document.getElementById('analyze-container').style.display = 'flex';
+        }
+
+        async function handleSearch(e) {
+            if (e.key === 'Enter') {
+                const query = document.getElementById('search-input').value;
+                if (!query) return;
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        const lat = parseFloat(data[0].lat);
+                        const lon = parseFloat(data[0].lon);
+                        map.setView([lat, lon], 13);
+                        updateLocation(lat, lon);
+                    } else { alert("Konum bulunamadı."); }
+                } catch (err) { console.error(err); }
+            }
+        }
+
+        function updateRadius(val) {
+            radius = val;
+            document.getElementById('rad-val').innerText = val + "m";
+            updateCircle();
+        }
+
+        function updateCircle() {
+            if(circle) map.removeLayer(circle);
+            if(sLat) circle = L.circle([sLat, sLng], {color:'#FFC107', fillColor:'#FFC107', fillOpacity:0.1, radius: radius}).addTo(map);
+        }
+
+        async function runSmartAnalysis() {
+            if(!sLat || !sLng) { alert("Lütfen haritadan bir yer seçin."); return; }
+            document.getElementById('loading-screen').style.display = 'flex';
+            
+            const aniProm = new Promise(async (resolve) => {
+                const logs = T[lang].logs;
+                const box = document.getElementById('log-container'); box.innerHTML = '';
+                for (let i=0; i<logs.length; i++) {
+                    await new Promise(r => setTimeout(r, 800));
+                    let p = document.createElement('p'); p.innerText = logs[i]; p.style.color = '#4ade80';
+                    box.prepend(p);
+                }
+                resolve();
+            });
+
+            // LANG PARAMETRESİNİ EKLEDİK
+            const fetchProm = fetch('/analyze', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ lat: sLat, lng: sLng, radius: radius, lang: lang })
+            }).then(r => r.json());
+
+            try {
+                const [_, data] = await Promise.all([aniProm, fetchProm]);
+                document.getElementById('loading-screen').style.display = 'none';
+                if (data.error) { alert("Analiz Hatası: " + data.error); return; }
+                
+                currentData = data;
+                document.getElementById('result-modal').style.display = 'flex';
+                updateUI();
+                drawHeatmap(data.heatmap);
+            } catch (e) { alert("Bağlantı Hatası: " + e); document.getElementById('loading-screen').style.display = 'none'; }
+        }
+
+        function drawHeatmap(points) {
+            points.forEach(p => {
+                let col = p.val > 70 ? '#2ecc71' : (p.val > 40 ? '#f1c40f' : '#e74c3c');
+                L.circle([p.lat, p.lng], { color: col, fillColor: col, fillOpacity: 0.4, radius: radius/5, stroke: false }).addTo(heatLayerGroup);
+            });
+        }
+
+        function updateUI() {
+            if (!currentData || !currentData.details) return;
+            const d = currentData.details; const s = currentData.breakdown;
+            const L = T[lang];
+
+            document.getElementById('score-val').innerText = currentData.score;
+            document.getElementById('score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
+            
+            const windDirTxt = L.dirs[d.wind_dir] || d.wind_dir;
+            const aspectDirTxt = d.dir_tr; 
+            
+            const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m";
+            const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
+            const waterMsg = d.d_water >= 5000 ? (lang==='TR'?"tespit edilememiştir":"not detected") : (lang==='TR'?`mesafe <b>${d.d_water}m</b>`:`distance <b>${d.d_water}m</b>`);
+
+            document.getElementById('dynamic-text').innerHTML = L.summary
+                .replace('{flora}', d.flora_type)
+                .replace('{wind}', windDirTxt)
+                .replace('{water}', waterMsg);
+
+            const metrics = [
+                { l: L.lbl.flora, v: d.flora_type, s: s.flora, i: "forest" },
+                { l: L.lbl.water, v: waterText, s: s.water, i: "water_drop" },
+                { l: L.lbl.wind, v: `${d.avg_wind} km/h (${windDirTxt})`, s: s.wind, i: "air" },
+                { l: L.lbl.aspect, v: aspectDirTxt, s: s.aspect, i: "wb_sunny" },
+                { l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" },
+                { l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: s.slope, i: "landscape" },
+                { l: L.lbl.road, v: roadText, s: s.road, i: "add_road" },
+                { l: L.lbl.build, v: d.b_count, s: s.build, i: "location_city" },
+                { l: L.lbl.elev, v: d.elevation + "m", s: 100, i: "landscape" },
+                { l: L.lbl.temp, v: d.avg_temp + " °C", s: s.temp, i: "thermostat" }
+            ];
+
+            const grid = document.getElementById('metrics-grid'); 
+            grid.innerHTML = '';
+            metrics.forEach(m => {
+                const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500");
+                grid.innerHTML += `
+                <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <div class="text-[10px] text-gray-400 font-bold uppercase mb-1">${m.l}</div>
+                            <div class="text-white font-bold text-lg truncate w-32">${m.v}</div>
+                        </div>
+                        <span class="material-symbols-outlined text-gray-600 text-2xl">${m.i}</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-gray-700 mt-2 rounded-full overflow-hidden">
+                        <div class="h-full ${barColor}" style="width: ${m.s}%"></div>
+                    </div>
+                </div>`;
+            });
+        }
+
+        function setLang(l) { 
+            lang = l; 
+            const L = T[l];
+            document.getElementById('btn-analyze-text').innerText = L.btn;
+            document.getElementById('loading-title').innerText = L.load;
+            document.getElementById('lbl-live').innerText = L.live;
+            document.getElementById('lbl-score').innerText = L.score;
+            document.getElementById('btn-dl').innerText = L.dl;
+            document.getElementById('lbl-rad').innerText = L.rad;
+            document.getElementById('lbl-details').innerText = L.det;
+            document.getElementById('search-input').placeholder = L.ph;
+            
+            document.getElementById('btn-tr').className = l==='TR' ? "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition" : "px-3 py-1 rounded-full text-xs font-bold text-gray-400 hover:text-white transition";
+            document.getElementById('btn-en').className = l==='EN' ? "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition" : "px-3 py-1 rounded-full text-xs font-bold text-gray-400 hover:text-white transition";
+            
+            if(currentData) runSmartAnalysis(); // Dil değişince tekrar analiz yap (Verileri çevirmek için)
+        }
+        
+        function closeModal(e) { if(e.target.id === 'result-modal') document.getElementById('result-modal').style.display='none'; }
+        function closeModalBtn() { document.getElementById('result-modal').style.display='none'; }
+        function downloadReport() { window.open(`/download_report?lat=${sLat}&lng=${sLng}&radius=${radius}&lang=${lang}`, '_blank'); }
+
+        initMap();
+    </script>
+</body>
+</html>

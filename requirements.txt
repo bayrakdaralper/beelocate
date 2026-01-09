@@ -1,0 +1,11 @@
+Flask
+Flask-Caching
+osmnx
+geopandas
+shapely
+pandas
+fpdf
+requests
+numpy
+matplotlib
+gunicorn
