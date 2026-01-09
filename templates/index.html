@@ -70,7 +70,6 @@
     <div id="loading-screen" class="fixed inset-0 bg-bg-dark/95 z-50 hidden flex-col items-center justify-center text-center">
         <div class="radar-spinner mb-4"></div>
         <div class="text-4xl font-black text-primary mb-2" id="loading-percent">0%</div>
-        
         <h2 class="text-xl font-bold mb-4 text-white" id="loading-title">Saha Taranıyor...</h2>
         <div class="w-80 h-24 overflow-hidden relative">
             <div id="log-container" class="flex flex-col items-center gap-2 text-sm text-gray-400 font-mono transition-all duration-300"></div>
@@ -84,7 +83,6 @@
         </button>
 
         <div class="bg-[#1e1e1e] w-full max-w-6xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[750px] relative" onclick="event.stopPropagation()">
-            
             <div class="w-full md:w-1/3 bg-[#252525] p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative overflow-y-auto">
                 <div>
                     <div class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-6">
@@ -101,11 +99,9 @@
                         <span id="score-comment">--</span>
                     </div>
                 </div>
-                
                 <div class="mt-6 p-4 bg-black/20 rounded-xl border-l-2 border-primary">
                     <p class="text-sm text-gray-300 leading-relaxed" id="dynamic-text">...</p>
                 </div>
-                
                 <div class="mt-auto pt-6 opacity-30 text-[10px] uppercase tracking-widest text-center">AI Powered Feasibility Engine</div>
             </div>
 
@@ -128,20 +124,14 @@
                 logs:['Uydu Verisi İndiriliyor...','Görüntü İşleniyor...','Kriterler Hesaplanıyor...','Rapor Oluşturuluyor...'], 
                 live:'CANLI ANALİZ', score:'GENEL SKOR', dl:'PDF İNDİR', rad:'Tarama Çapı', det:'Detaylı Saha Karnesi', 
                 high:'Yüksek Potansiyel', risk:'Orta/Riskli', not_found:'Tespit Edilemedi', access_err:'Erişim Zor / Yok',
-                dirs: {"N": "Kuzey", "NE": "Kuzeydoğu", "E": "Doğu", "SE": "Güneydoğu", "S": "Güney", "SW": "Güneybatı", "W": "Batı", "NW": "Kuzeybatı"},
-                lbl: {flora:'FLORA', water:'SU KAYNAĞI', wind:'RÜZGAR', aspect:'BAKI (YÖN)', hum:'NEM', slope:'EĞİM', road:'ULAŞIM', build:'YERLEŞİM', elev:'RAKIM', temp:'SICAKLIK'},
-                summary: "Bölgede <b>{flora}</b> hakimiyeti görülmüştür. Hakim rüzgar <b>{wind}</b> yönündedir. Su kaynağı {water}.",
-                flora_err: "Bölgede baskın bitki örtüsü uydu verileriyle ayırt edilememiştir."
+                lbl: {flora:'FLORA', water:'SU KAYNAĞI', wind:'RÜZGAR', aspect:'BAKI (YÖN)', hum:'NEM', slope:'EĞİM', road:'ULAŞIM', build:'YERLEŞİM', elev:'RAKIM', temp:'SICAKLIK'}
             },
             'EN': { 
                 ph:'Search location... (Enter)', btn:'ANALYZE LOCATION', load:'Scanning Field...', 
                 logs:['Downloading Satellite Data...','Processing Image...','Calculating Metrics...','Generating Report...'], 
                 live:'LIVE ANALYSIS', score:'OVERALL SCORE', dl:'DOWNLOAD PDF', rad:'Scan Radius', det:'Detailed Field Report', 
                 high:'High Potential', risk:'Medium/Risky', not_found:'Not Detected', access_err:'Hard Access / Far',
-                dirs: {"N": "North", "NE": "Northeast", "E": "East", "SE": "Southeast", "S": "South", "SW": "Southwest", "W": "West", "NW": "Northwest"},
-                lbl: {flora:'FLORA', water:'WATER', wind:'WIND', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'ACCESS', build:'BUILDINGS', elev:'ELEVATION', temp:'TEMP'},
-                summary: "Area dominated by <b>{flora}</b>. Prevailing wind is <b>{wind}</b>. Water source is {water}.",
-                flora_err: "Dominant vegetation could not be distinguished via satellite data."
+                lbl: {flora:'FLORA', water:'WATER', wind:'WIND', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'ACCESS', build:'BUILDINGS', elev:'ELEVATION', temp:'TEMP'}
             }
         };
         
@@ -197,30 +187,25 @@
             if(sLat) circle = L.circle([sLat, sLng], {color:'#FFC107', fillColor:'#FFC107', fillOpacity:0.1, radius: radius}).addTo(map);
         }
 
-        // --- GERÇEKÇİ YÜZDE ANİMASYONU ---
         function startProgress() {
             let percent = 0;
             const el = document.getElementById('loading-percent');
             const logBox = document.getElementById('log-container');
             logBox.innerHTML = '';
-            
-            // Logları sırayla göster
             const logs = T[lang].logs;
             let logIndex = 0;
             
             progressInterval = setInterval(() => {
-                // Hız kontrolü: Başta hızlı, sonlara doğru yavaşla (Cevap gelene kadar)
                 let increment = 0;
                 if(percent < 30) increment = Math.random() * 5;
                 else if(percent < 70) increment = Math.random() * 2;
-                else if(percent < 90) increment = Math.random() * 0.5;
+                else if(percent < 95) increment = Math.random() * 0.5;
                 
                 percent += increment;
-                if(percent > 99) percent = 99; // Cevap gelmeden 100 yapma
+                if(percent > 99) percent = 99;
                 
                 el.innerText = Math.floor(percent) + "%";
                 
-                // Logları değiştir
                 if (percent > (logIndex + 1) * 25 && logIndex < logs.length) {
                     let p = document.createElement('p'); 
                     p.innerText = logs[logIndex]; 
@@ -240,7 +225,7 @@
             if(!sLat || !sLng) { alert("Lütfen haritadan bir yer seçin."); return; }
             
             document.getElementById('loading-screen').style.display = 'flex';
-            startProgress(); // Sayacı başlat
+            startProgress();
 
             try {
                 const res = await fetch('/analyze', {
@@ -249,9 +234,7 @@
                 });
                 const data = await res.json();
                 
-                stopProgress(); // Sayacı 100% yap ve durdur
-                
-                // Kısa bir bekleme (İnsanlar 100% olduğunu görsün)
+                stopProgress();
                 await new Promise(r => setTimeout(r, 500));
                 
                 document.getElementById('loading-screen').style.display = 'none';
@@ -284,30 +267,17 @@
             document.getElementById('score-val').innerText = currentData.score;
             document.getElementById('score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
             
-            const windDirTxt = L.dirs[d.wind_dir] || d.wind_dir;
-            const aspectDirTxt = d.dir_tr; 
-            
+            // Backend'den gelen hazır yapay zeka metnini kullan
+            document.getElementById('dynamic-text').innerHTML = currentData.ai_text;
+
             const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m";
             const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
-            const waterMsg = d.d_water >= 5000 ? (lang==='TR'?"tespit edilememiştir":"not detected") : (lang==='TR'?`mesafe <b>${d.d_water}m</b>`:`distance <b>${d.d_water}m</b>`);
-
-            // --- AKILLI METİN DÜZELTMESİ ---
-            let finalText = "";
-            if (d.flora_type === "Bilinmiyor" || d.flora_type === "Unknown") {
-                finalText = L.flora_err + " " + `Hakim rüzgar <b>${windDirTxt}</b> yönündedir. Su kaynağı ${waterMsg}.`;
-            } else {
-                finalText = L.summary
-                    .replace('{flora}', d.flora_type)
-                    .replace('{wind}', windDirTxt)
-                    .replace('{water}', waterMsg);
-            }
-            document.getElementById('dynamic-text').innerHTML = finalText;
 
             const metrics = [
                 { l: L.lbl.flora, v: d.flora_type, s: s.flora, i: "forest" },
                 { l: L.lbl.water, v: waterText, s: s.water, i: "water_drop" },
-                { l: L.lbl.wind, v: `${d.avg_wind} km/h (${windDirTxt})`, s: s.wind, i: "air" },
-                { l: L.lbl.aspect, v: aspectDirTxt, s: s.aspect, i: "wb_sunny" },
+                { l: L.lbl.wind, v: `${d.avg_wind} km/h`, s: s.wind, i: "air" },
+                { l: L.lbl.aspect, v: d.dir_tr, s: s.aspect, i: "wb_sunny" },
                 { l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" },
                 { l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: s.slope, i: "landscape" },
                 { l: L.lbl.road, v: roadText, s: s.road, i: "add_road" },
@@ -321,11 +291,11 @@
             metrics.forEach(m => {
                 const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500");
                 grid.innerHTML += `
-                <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between">
+                <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between relative group hover:border-primary/50 transition">
                     <div class="flex justify-between items-start mb-2">
                         <div>
-                            <div class="text-[10px] text-gray-400 font-bold uppercase mb-1">${m.l}</div>
-                            <div class="text-white font-bold text-lg leading-tight truncate w-32">${m.v}</div>
+                            <div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">${m.l}</div>
+                            <div class="text-white font-bold text-lg leading-tight truncate w-40" title="${m.v}">${m.v}</div>
                         </div>
                         <span class="material-symbols-outlined text-gray-600 text-2xl">${m.i}</span>
                     </div>
