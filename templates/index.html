@@ -2,7 +2,7 @@
 <html class="dark" lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
 <title>BeeLocate PRO</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -16,7 +16,9 @@
     tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#FFC107", "primary-hover": "#FFB300", "bg-dark": "#212121", "surface": "#1a1a1a" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
 </script>
 <style>
-    #map { height: 100vh; width: 100vw; z-index: 0; }
+    /* Mobilde adres çubuğu sorununu çözmek için fixed positioning */
+    #map { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+    
     .radar-spinner { width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, rgba(255, 193, 7, 0.5) 100%); animation: radar-spin 1.5s linear infinite; position: relative; }
     .radar-spinner::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: #212121; }
     @keyframes radar-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -32,11 +34,11 @@
 
     <div class="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 md:w-[600px] z-20 flex flex-col gap-3 pointer-events-none">
         <div class="flex justify-between items-center px-2 pointer-events-auto">
-            <div class="flex items-center gap-2 drop-shadow-md bg-black/40 px-3 py-1 rounded-full backdrop-blur cursor-pointer" onclick="window.location.href='/'">
+            <div class="flex items-center gap-2 drop-shadow-md bg-black/60 px-4 py-2 rounded-full backdrop-blur cursor-pointer border border-white/10" onclick="window.location.href='/'">
                 <span class="material-symbols-outlined text-primary text-3xl">hive</span>
                 <h1 class="text-xl font-bold tracking-tight">BeeLocate <span class="text-primary">PRO</span></h1>
             </div>
-            <div class="bg-black/50 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex">
+            <div class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg">
                 <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
                 <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition">EN</button>
             </div>
@@ -45,8 +47,8 @@
 
     <div id="map"></div>
 
-    <div class="fixed bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-3 w-full max-w-sm px-4" id="analyze-container">
-        <div class="bg-black/80 backdrop-blur-md p-4 rounded-2xl border border-white/10 w-full animate-fade-in-up space-y-4">
+    <div class="fixed bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-3 w-[95%] max-w-sm px-0" id="analyze-container">
+        <div class="bg-black/80 backdrop-blur-md p-4 rounded-2xl border border-white/10 w-full animate-fade-in-up space-y-4 shadow-2xl">
             <div class="flex items-center bg-white/10 rounded-xl px-3 h-10 border border-white/5 focus-within:border-primary transition">
                 <span class="material-symbols-outlined text-gray-400 text-lg">search</span>
                 <input id="search-input" class="bg-transparent border-none text-white text-sm w-full ml-2 focus:outline-none placeholder-gray-500" 
@@ -60,9 +62,9 @@
                 <input type="range" id="radius-slider" min="1000" max="5000" step="500" value="2000" oninput="updateRadius(this.value)">
             </div>
         </div>
-        <button onclick="runSmartAnalysis()" class="flex items-center justify-center gap-3 h-14 w-full bg-primary hover:bg-primary-hover text-[#181610] rounded-2xl shadow-xl transform transition active:scale-95 animate-fade-in-up" style="animation-delay: 0.1s;">
+        <button onclick="runSmartAnalysis()" class="flex items-center justify-center gap-3 h-14 w-full bg-primary hover:bg-primary-hover text-[#181610] rounded-2xl shadow-xl transform transition active:scale-95 animate-fade-in-up font-bold text-lg" style="animation-delay: 0.1s;">
             <span class="material-symbols-outlined text-2xl">query_stats</span>
-            <span class="font-bold text-base tracking-wide uppercase" id="btn-analyze-text">KONUMU ANALİZ ET</span>
+            <span id="btn-analyze-text">KONUMU ANALİZ ET</span>
         </button>
     </div>
 
@@ -82,7 +84,7 @@
 
         <div class="bg-[#1e1e1e] w-full max-w-6xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[750px] relative" onclick="event.stopPropagation()">
             
-            <div class="w-full md:w-1/3 bg-[#252525] p-8 flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative">
+            <div class="w-full md:w-1/3 bg-[#252525] p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative overflow-y-auto">
                 <div>
                     <div class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-6">
                         <span class="size-2 rounded-full bg-green-500 animate-pulse"></span>
@@ -98,20 +100,22 @@
                         <span id="score-comment">--</span>
                     </div>
                 </div>
+                
                 <div class="mt-6 p-4 bg-black/20 rounded-xl border-l-2 border-primary">
                     <p class="text-sm text-gray-300 leading-relaxed" id="dynamic-text">...</p>
                 </div>
-                <div class="mt-auto opacity-30 text-[10px] uppercase tracking-widest text-center">AI Powered Feasibility Engine</div>
+                
+                <div class="mt-auto pt-6 opacity-30 text-[10px] uppercase tracking-widest text-center">AI Powered Feasibility Engine</div>
             </div>
 
-            <div class="w-full md:w-2/3 p-8 relative overflow-y-auto no-scrollbar bg-[#1e1e1e]">
-                <div class="flex justify-between items-center mb-6">
+            <div class="w-full md:w-2/3 p-6 md:p-8 relative overflow-y-auto no-scrollbar bg-[#1e1e1e]">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                     <h3 class="text-2xl font-bold text-white" id="lbl-details">Detaylı Saha Karnesi</h3>
-                    <button onclick="downloadReport()" class="bg-primary hover:bg-primary-hover text-black px-6 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-lg">
+                    <button onclick="downloadReport()" class="bg-primary hover:bg-primary-hover text-black px-6 py-3 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-lg w-full md:w-auto justify-center">
                         <span class="material-symbols-outlined">download</span> <span id="btn-dl">Raporu İndir</span>
                     </button>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="metrics-grid"></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-12" id="metrics-grid"></div>
             </div>
         </div>
     </div>
@@ -144,8 +148,14 @@
         let map, marker, circle, heatLayerGroup;
 
         function initMap() {
+            // zoomControl: false -> Mobilde daha temiz görünüm için
             map = L.map('map', { zoomControl: false }).setView([39.7766, 30.5206], 13);
-            var sat = L.tileLayer('http://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', {attribution:'Google'});
+            
+            // DÜZELTME: HTTP -> HTTPS (Güvenli Bağlantı)
+            var sat = L.tileLayer('https://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', {attribution:'Google'});
+            // Alternatif (Eğer Google çalışmazsa): 
+            // var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {attribution: 'Esri'});
+            
             sat.addTo(map);
             L.control.zoom({position:'bottomright'}).addTo(map);
             heatLayerGroup = L.layerGroup().addTo(map);
@@ -158,13 +168,15 @@
             sLat = lat; sLng = lng;
             marker = L.marker([lat, lng]).addTo(map);
             updateCircle();
-            document.getElementById('analyze-container').style.display = 'flex';
+            // Mobilde klavye açılınca ekran kaymasın diye focus yapmıyoruz
         }
 
         async function handleSearch(e) {
             if (e.key === 'Enter') {
                 const query = document.getElementById('search-input').value;
                 if (!query) return;
+                // Klavye kapansın diye inputtan çık
+                document.getElementById('search-input').blur();
                 try {
                     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
                     const data = await res.json();
@@ -204,7 +216,6 @@
                 resolve();
             });
 
-            // LANG PARAMETRESİNİ EKLEDİK
             const fetchProm = fetch('/analyze', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ lat: sLat, lng: sLng, radius: radius, lang: lang })
@@ -297,7 +308,7 @@
             document.getElementById('btn-tr').className = l==='TR' ? "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition" : "px-3 py-1 rounded-full text-xs font-bold text-gray-400 hover:text-white transition";
             document.getElementById('btn-en').className = l==='EN' ? "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition" : "px-3 py-1 rounded-full text-xs font-bold text-gray-400 hover:text-white transition";
             
-            if(currentData) runSmartAnalysis(); // Dil değişince tekrar analiz yap (Verileri çevirmek için)
+            if(currentData) runSmartAnalysis(); 
         }
         
         function closeModal(e) { if(e.target.id === 'result-modal') document.getElementById('result-modal').style.display='none'; }
