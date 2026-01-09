@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BeeLocate PRO - Arılığını Uydudan Seç</title>
+    <title>BeeLocate PRO - Nokta Atışı Arıcılık</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -14,12 +14,27 @@
     </script>
     <style>
         .hero-bg {
-            /* Arıcılık temalı, profesyonel ve koyu tonlu bir görsel */
-            background-image: linear-gradient(to bottom, rgba(18,18,18,0.6), rgba(18,18,18,1)), url('https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?q=80&w=2670&auto=format&fit=crop');
+            /* Kovan ve Arıcı Görseli */
+            background-image: 
+                /* Dijital Petek Dokusu (Overlay) */
+                radial-gradient(circle, transparent 20%, #121212 120%),
+                linear-gradient(to bottom, rgba(18,18,18,0.7), rgba(18,18,18,0.9)),
+                url('https://images.unsplash.com/photo-1621262495868-f9035667a493?q=80&w=2670&auto=format&fit=crop');
             background-size: cover;
             background-position: center;
-            background-attachment: fixed; /* Parallax etkisi */
+            background-attachment: fixed;
         }
+        
+        /* İnce Petek Deseni Efekti */
+        .tech-overlay {
+            background-image: radial-gradient(#FFC107 1px, transparent 1px);
+            background-size: 30px 30px;
+            opacity: 0.1;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+        }
+
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
@@ -39,7 +54,7 @@
 </head>
 <body class="bg-dark-bg text-white font-sans antialiased">
 
-    <nav class="fixed w-full z-50 top-0 bg-dark-bg/80 backdrop-blur-md border-b border-white/5 transition-all">
+    <nav class="fixed w-full z-50 top-0 bg-dark-bg/90 backdrop-blur-md border-b border-white/5 transition-all">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center gap-2 cursor-pointer" onclick="window.scrollTo(0,0)">
@@ -56,37 +71,39 @@
     </nav>
 
     <header class="hero-bg h-[100vh] flex flex-col justify-center items-center text-center px-4 relative">
-        <div class="animate-pulse mb-6">
-            <span class="material-symbols-outlined text-primary text-7xl drop-shadow-[0_0_20px_rgba(255,193,7,0.6)]">travel_explore</span>
+        <div class="tech-overlay"></div> <div class="animate-pulse mb-6 relative z-10">
+            <div class="bg-black/30 p-4 rounded-full border border-primary/30 backdrop-blur-sm">
+                <span class="material-symbols-outlined text-primary text-6xl drop-shadow-[0_0_20px_rgba(255,193,7,0.8)]">satellite_alt</span>
+            </div>
         </div>
         
-        <h1 class="text-4xl md:text-7xl font-black leading-tight mb-6 max-w-4xl tracking-tight">
-            Arılığını Uydudan Seç, <br>
-            <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-orange-500">Potansiyeli Keşfet.</span>
+        <h1 class="text-4xl md:text-7xl font-black leading-tight mb-6 max-w-5xl tracking-tight relative z-10">
+            Göz Kararı Değil, <br>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-orange-500">Uydu Kararı.</span>
         </h1>
         
-        <p class="text-gray-200 text-base md:text-xl mb-10 max-w-2xl mx-auto leading-relaxed font-light">
-            Bilimsel algoritmalarla arazinizin flora, su ve rüzgar analizini saniyeler içinde yapın. 
-            <span class="text-white font-semibold border-b border-primary/50">Beta sürümü süresince tamamen ücretsiz.</span>
+        <p class="text-gray-200 text-base md:text-xl mb-10 max-w-2xl mx-auto leading-relaxed font-light relative z-10">
+            Deneme yanılma devri bitti. Meranızın <b>flora, su ve rüzgar</b> durumunu uydudan analiz edin, arılarınızı en verimli noktaya taşıyın.
+            <span class="block mt-2 text-primary font-medium text-sm border border-primary/20 bg-primary/10 rounded-full py-1 px-3 w-max mx-auto">Beta sürecinde tamamen ücretsiz.</span>
         </p>
 
-        <div class="w-full max-w-lg space-y-4">
+        <div class="w-full max-w-lg space-y-4 relative z-10">
             <a href="/app" class="group relative block cursor-pointer">
                 <div class="absolute -inset-0.5 bg-gradient-to-r from-primary to-orange-600 rounded-2xl blur opacity-30 group-hover:opacity-70 transition duration-500"></div>
                 <div class="relative flex items-center bg-[#2a2a2a] rounded-xl p-2 border border-white/10 group-hover:border-primary/50 transition">
                     <span class="material-symbols-outlined text-gray-400 ml-3 group-hover:text-primary transition">search</span>
-                    <div class="ml-3 text-left w-full text-gray-400 text-sm md:text-base group-hover:text-white transition">İl, İlçe veya Konum Girin...</div>
-                    <div class="bg-white/10 px-3 py-1 rounded text-xs text-gray-400 mr-2">ENTER</div>
+                    <div class="ml-3 text-left w-full text-gray-400 text-sm md:text-base group-hover:text-white transition">İl, İlçe veya Mera Konumu...</div>
+                    <div class="bg-white/10 px-3 py-1 rounded text-xs text-gray-400 mr-2">GİT</div>
                 </div>
             </a>
             
             <a href="/app" class="block w-full py-4 bg-primary hover:bg-yellow-400 text-black font-black text-lg rounded-xl shadow-[0_10px_30px_-10px_rgba(255,193,7,0.4)] transition transform hover:-translate-y-1 active:scale-95 uppercase tracking-wide flex items-center justify-center gap-2">
-                KONUMU TARA <span class="material-symbols-outlined text-xl">rocket_launch</span>
+                HEMEN ANALİZ ET <span class="material-symbols-outlined text-xl">arrow_forward</span>
             </a>
         </div>
 
-        <div class="scroll-down flex flex-col items-center gap-1 text-gray-400 cursor-pointer opacity-70 hover:opacity-100 transition" onclick="document.getElementById('guven').scrollIntoView({behavior: 'smooth'})">
-            <span class="text-[10px] uppercase tracking-widest">Aşağı Kaydır</span>
+        <div class="scroll-down flex flex-col items-center gap-1 text-gray-400 cursor-pointer opacity-70 hover:opacity-100 transition z-10" onclick="document.getElementById('guven').scrollIntoView({behavior: 'smooth'})">
+            <span class="text-[10px] uppercase tracking-widest">Neleri Analiz Ediyoruz?</span>
             <span class="material-symbols-outlined">keyboard_arrow_down</span>
         </div>
     </header>
@@ -95,34 +112,34 @@
         <div class="max-w-7xl mx-auto flex flex-wrap justify-center md:justify-between gap-6 px-8 text-center md:text-left">
             <div class="flex items-center gap-3">
                 <div class="bg-primary/10 p-2 rounded-lg"><span class="material-symbols-outlined text-primary">school</span></div>
-                <div class="text-sm"><div class="font-bold text-white">Akademik Literatür</div><div class="text-gray-500 text-xs">Bilimsel Puanlama</div></div>
+                <div class="text-sm"><div class="font-bold text-white">Akademik Altyapı</div><div class="text-gray-500 text-xs">Bilimsel Puanlama</div></div>
             </div>
             <div class="flex items-center gap-3">
                 <div class="bg-blue-500/10 p-2 rounded-lg"><span class="material-symbols-outlined text-blue-400">satellite_alt</span></div>
-                <div class="text-sm"><div class="font-bold text-white">Güncel Uydu Verisi</div><div class="text-gray-500 text-xs">OSM & Sentinel</div></div>
+                <div class="text-sm"><div class="font-bold text-white">Anlık Uydu Verisi</div><div class="text-gray-500 text-xs">Global Kapsama</div></div>
             </div>
             <div class="flex items-center gap-3">
                 <div class="bg-green-500/10 p-2 rounded-lg"><span class="material-symbols-outlined text-green-400">verified_user</span></div>
-                <div class="text-sm"><div class="font-bold text-white">Güvenli Analiz</div><div class="text-gray-500 text-xs">Konum Kaydedilmez</div></div>
+                <div class="text-sm"><div class="font-bold text-white">Güvenli</div><div class="text-gray-500 text-xs">Konumunuz Kaydedilmez</div></div>
             </div>
         </div>
     </div>
 
     <section class="py-24 px-6 max-w-6xl mx-auto">
         <div class="text-center mb-16">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">Göz Kararı Yatırım Yapmayın.</h2>
-            <p class="text-gray-400 max-w-2xl mx-auto">Geleneksel yöntemler zaman ve para kaybettirir. BeeLocate ile riskleri önceden görün.</p>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">Neden BeeLocate?</h2>
+            <p class="text-gray-400 max-w-2xl mx-auto">Arıcılıkta en büyük maliyet yanlış yer seçimidir.</p>
         </div>
 
         <div class="grid md:grid-cols-2 gap-8">
             <div class="bg-card-bg p-8 rounded-3xl border border-white/5 hover:border-primary/30 transition group shadow-2xl relative overflow-hidden">
                 <div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full -mr-8 -mt-8 transition group-hover:bg-primary/10"></div>
                 <div class="w-14 h-14 bg-primary/20 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-primary transition text-primary group-hover:text-black">
-                    <span class="material-symbols-outlined text-3xl">science</span>
+                    <span class="material-symbols-outlined text-3xl">query_stats</span>
                 </div>
-                <h3 class="text-2xl font-bold mb-4 text-white">Akademik Hassasiyet</h3>
+                <h3 class="text-2xl font-bold mb-4 text-white">Veriye Dayalı Arıcılık</h3>
                 <p class="text-gray-400 leading-relaxed">
-                    Skorlama algoritmamız, yayınlanmış güncel akademik makaleler ve CBS tezleri referans alınarak geliştirildi. Tahmin değil, <b class="text-white">veri odaklı sonuç.</b>
+                    "Bu sene burası bal yapar mı?" diye düşünmeyin. Algoritmamız geçmiş meteorolojik verileri ve bitki örtüsünü tarayarak size net bir karne sunar.
                 </p>
             </div>
 
@@ -133,7 +150,7 @@
                 </div>
                 <h3 class="text-2xl font-bold mb-4 text-white">Mazotunuz Cebinizde Kalsın</h3>
                 <p class="text-gray-400 leading-relaxed">
-                    Kovanları taşımadan önce sanal keşif yapın. Verimsiz meralar için nakliye ve işçilik masrafına girmeyin. <b class="text-white">Paranızı kovanlarınıza saklayın.</b>
+                    Kovanları yükleyip götürmeden önce sanal keşif yapın. Verimsiz veya riskli meralar için nakliye masrafına girmeyin. Paranızı koruyun.
                 </p>
             </div>
         </div>
@@ -142,8 +159,8 @@
     <section class="py-16 bg-white/5 border-y border-white/5">
         <div class="px-6 mb-10 max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-end gap-4">
             <div>
-                <h2 class="text-3xl font-bold text-white mb-2">Detaylı Fizibilite Raporu</h2>
-                <p class="text-gray-400 text-sm">Tek bir tıklamayla 8 farklı kriterin analizini görün.</p>
+                <h2 class="text-3xl font-bold text-white mb-2">Detaylı Fizibilite Karnesi</h2>
+                <p class="text-gray-400 text-sm">Tek tıkla bölgenin röntgenini çekin. (Sağa kaydırın)</p>
             </div>
             <div class="hidden md:flex gap-2">
                 <button class="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/10" onclick="document.getElementById('slider').scrollLeft -= 300"><span class="material-symbols-outlined">chevron_left</span></button>
@@ -157,8 +174,8 @@
                 <div class="aspect-video bg-gray-800 rounded-xl mb-4 flex items-center justify-center relative overflow-hidden group">
                     <span class="material-symbols-outlined text-6xl text-gray-600 group-hover:text-primary transition">forest</span>
                 </div>
-                <h4 class="font-bold text-lg text-primary mb-1">🌿 Flora Analizi</h4>
-                <p class="text-sm text-gray-400">Bölgedeki nektar ve polen kaynaklarının (Orman, Mera, Tarım) yoğunluk tespiti.</p>
+                <h4 class="font-bold text-lg text-primary mb-1">🌿 Flora Yoğunluğu</h4>
+                <p class="text-sm text-gray-400">Bölgedeki orman, mera ve çiçekli alanların yoğunluk tespiti.</p>
             </div>
             
             <div class="min-w-[300px] bg-card-bg rounded-2xl border border-white/10 p-5 snap-center hover:border-blue-400/50 transition cursor-default">
@@ -166,7 +183,7 @@
                     <span class="material-symbols-outlined text-6xl text-gray-600 group-hover:text-blue-400 transition">water_drop</span>
                 </div>
                 <h4 class="font-bold text-lg text-blue-400 mb-1">💧 Su Kaynakları</h4>
-                <p class="text-sm text-gray-400">Arıların uçuş menzilindeki (0-3km) su kaynaklarına olan kritik mesafe analizi.</p>
+                <p class="text-sm text-gray-400">Arıların uçuş menzilindeki (0-3km) su kaynaklarına olan mesafe.</p>
             </div>
             
             <div class="min-w-[300px] bg-card-bg rounded-2xl border border-white/10 p-5 snap-center hover:border-gray-200/50 transition cursor-default">
@@ -174,7 +191,7 @@
                     <span class="material-symbols-outlined text-6xl text-gray-600 group-hover:text-white transition">air</span>
                 </div>
                 <h4 class="font-bold text-lg text-white mb-1">💨 Rüzgar Koridoru</h4>
-                <p class="text-sm text-gray-400">Kovan giriş yönünü ve rüzgarkıran ihtiyacını belirlemeniz için hakim rüzgar yönü.</p>
+                <p class="text-sm text-gray-400">Kovan giriş yönünü ve rüzgarkıran ihtiyacını belirlemeniz için hakim rüzgar.</p>
             </div>
 
             <div class="min-w-[300px] bg-card-bg rounded-2xl border border-white/10 p-5 snap-center hover:border-orange-400/50 transition cursor-default">
@@ -182,7 +199,7 @@
                     <span class="material-symbols-outlined text-6xl text-gray-600 group-hover:text-orange-400 transition">wb_sunny</span>
                 </div>
                 <h4 class="font-bold text-lg text-orange-400 mb-1">☀️ Arazi Bakısı (Yön)</h4>
-                <p class="text-sm text-gray-400">Arazinin güneşe bakan yönünü (Güney/Kuzey) tespit ederek kovan ısınma verimini ölçeriz.</p>
+                <p class="text-sm text-gray-400">Arazinin güneşe bakan yönünü (Güney/Kuzey) tespit kovan ısınma verimi.</p>
             </div>
 
             <div class="min-w-[300px] bg-card-bg rounded-2xl border border-white/10 p-5 snap-center hover:border-red-400/50 transition cursor-default">
@@ -190,7 +207,7 @@
                     <span class="material-symbols-outlined text-6xl text-gray-600 group-hover:text-red-400 transition">location_city</span>
                 </div>
                 <h4 class="font-bold text-lg text-red-400 mb-1">🏙️ Yerleşim Baskısı</h4>
-                <p class="text-sm text-gray-400">Şehirleşme ve yapılaşma yoğunluğunu analiz ederek "Arı Stresi" riskini hesaplarız.</p>
+                <p class="text-sm text-gray-400">Şehirleşme ve yapılaşma yoğunluğunu analiz ederek "Arı Stresi" riskini gör.</p>
             </div>
 
         </div>
@@ -202,18 +219,18 @@
         </div>
         <h2 class="text-3xl md:text-4xl font-bold mb-6">Arıcılar ve Mühendisler Omuz Omuza.</h2>
         <p class="text-gray-400 leading-relaxed text-lg">
-            BeeLocate; <b class="text-white">Ziraat Mühendisleri</b>, <b class="text-white">CBS (Coğrafi Bilgi Sistemleri) Uzmanları</b> ve deneyimli <b class="text-white">Arıcıların</b> ortak çalışmasıyla geliştirilmiştir.
+            BeeLocate; <b class="text-white">Ziraat Mühendisleri</b>, <b class="text-white">CBS Uzmanları</b> ve deneyimli <b class="text-white">Arıcıların</b> ortak çalışmasıyla geliştirilmiştir.
             Amacımız; teknolojiyi sahanın tozunu yutmuş üreticilerin hizmetine sunarak, Türkiye'nin bal verimini artırmaktır.
         </p>
     </section>
 
     <footer class="border-t border-white/10 py-20 px-6 text-center bg-gradient-to-b from-dark-bg to-black">
-        <h3 class="text-3xl font-bold mb-3">Henüz Karar Vermediniz mi?</h3>
-        <p class="text-gray-500 mb-10">Beta süreci dolmadan bölgenizi ücretsiz analiz edin, raporunuzu PDF olarak indirin.</p>
+        <h3 class="text-3xl font-bold mb-3 text-white">Yeni Meranızı Keşfetmeye Hazır mısınız?</h3>
+        <p class="text-gray-500 mb-10">Kayıt gerekmez. Hemen şimdi ücretsiz analiz edin.</p>
         
         <a href="/app" class="inline-flex items-center justify-center gap-3 w-full md:w-auto px-10 py-5 bg-white text-black font-black text-xl rounded-2xl hover:bg-gray-200 transition shadow-[0_20px_50px_-10px_rgba(255,255,255,0.2)] transform hover:-translate-y-1">
             <span class="material-symbols-outlined">description</span>
-            ÜCRETSİZ RAPORU OLUŞTUR
+            RAPORU OLUŞTUR
         </a>
         
         <div class="mt-16 border-t border-white/5 pt-8 flex flex-col md:flex-row justify-center items-center gap-4 text-[10px] text-gray-600 uppercase tracking-widest">
