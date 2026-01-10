@@ -9,3 +9,5 @@ requests
 numpy
 matplotlib
 gunicorn
+scipy
+networkx
