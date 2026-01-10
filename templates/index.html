@@ -80,41 +80,57 @@
     </div>
 
     <div id="result-modal" class="fixed inset-0 z-40 hidden flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onclick="closeModal(event)">
-        <div class="bg-[#1e1e1e] w-full md:w-full md:max-w-6xl md:rounded-3xl rounded-t-3xl border-t md:border border-white/10 shadow-2xl flex flex-col md:flex-row h-[85vh] md:h-[750px] relative slide-up overflow-hidden" onclick="event.stopPropagation()">
+        
+        <div class="bg-[#1e1e1e] w-full md:w-full md:max-w-6xl md:rounded-3xl rounded-t-3xl border-t md:border border-white/10 shadow-2xl flex flex-col md:flex-row h-[90vh] md:h-[750px] relative slide-up overflow-hidden" onclick="event.stopPropagation()">
+            
             <button onclick="closeModalBtn()" class="absolute top-4 right-4 z-50 bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-2 transition shadow-lg backdrop-blur-md">
                 <span class="material-symbols-outlined text-2xl">close</span>
             </button>
-            <div class="w-full md:w-1/3 bg-[#252525] flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative shrink-0">
-                <div class="p-6 md:p-8 flex flex-col h-full">
-                    <div class="text-center md:text-left">
-                        <div class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-4">
-                            <span class="size-2 rounded-full bg-green-500 animate-pulse"></span>
-                            <span class="text-xs font-bold text-gray-300" id="lbl-live">CBS ANALİZİ</span>
+
+            <div class="w-full md:w-1/3 bg-[#252525] flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative z-20 shadow-xl md:shadow-none transition-all duration-300" id="mobile-sticky-header">
+                
+                <div class="p-5 md:p-8 flex flex-col h-full transition-all duration-300" id="header-inner">
+                    <div class="text-center md:text-left flex flex-row md:flex-col items-center justify-between md:justify-start">
+                        
+                        <div class="flex flex-col items-center md:items-start transition-all duration-300" id="header-left-content">
+                            <div class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-2 transition-all" id="badge-container">
+                                <span class="size-2 rounded-full bg-green-500 animate-pulse"></span>
+                                <span class="text-xs font-bold text-gray-300" id="lbl-live">CBS ANALİZİ</span>
+                            </div>
+                            <div class="text-gray-400 text-sm font-bold uppercase tracking-widest mb-1 hidden md:block" id="lbl-score">UYGUNLUK SKORU</div>
                         </div>
-                        <div class="text-gray-400 text-sm font-bold uppercase tracking-widest mb-1" id="lbl-score">UYGUNLUK SKORU</div>
-                        <div class="flex items-baseline justify-center md:justify-start gap-2">
-                            <span class="text-7xl md:text-8xl font-black text-primary" id="score-val">0</span>
+
+                        <div class="flex items-baseline justify-center md:justify-start gap-1 transition-all duration-300" id="score-container">
+                            <span class="text-7xl md:text-8xl font-black text-primary transition-all duration-300" id="score-val">0</span>
                             <span class="text-xl md:text-2xl text-gray-500 font-bold">/100</span>
                         </div>
-                        <div class="mt-2 text-green-400 font-bold text-lg md:text-xl flex items-center justify-center md:justify-start gap-2">
+                        
+                        <div class="md:mt-2 text-green-400 font-bold text-lg md:text-xl flex items-center md:w-full justify-center md:justify-start gap-2 transition-all duration-300" id="status-container">
                             <span class="material-symbols-outlined">trending_up</span>
-                            <span id="score-comment">--</span>
+                            <span id="score-comment" class="hidden md:inline">--</span>
                         </div>
                     </div>
-                    <div class="mt-6 p-4 bg-black/20 rounded-xl border-l-2 border-primary text-center md:text-left">
+                    
+                    <div id="desc-container" class="mt-4 p-3 bg-black/20 rounded-xl border-l-2 border-primary text-center md:text-left transition-all duration-300 overflow-hidden" style="max-height: 200px; opacity: 1;">
                         <p class="text-sm text-gray-300 leading-relaxed" id="dynamic-text">...</p>
                     </div>
+                    
                     <div class="hidden md:block mt-auto pt-6 opacity-30 text-[10px] uppercase tracking-widest text-center">BeeLocate - GIS Decision Support System</div>
                 </div>
             </div>
-            <div class="w-full md:w-2/3 p-4 md:p-8 relative overflow-y-auto no-scrollbar bg-[#1e1e1e]">
-                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 sticky top-0 bg-[#1e1e1e] z-10 py-2">
-                    <h3 class="text-xl md:text-2xl font-bold text-white text-center md:text-left" id="lbl-details">Arazi Parametreleri</h3>
-                    <button onclick="downloadReport()" class="bg-primary hover:bg-primary-hover text-black px-6 py-3 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-lg w-full md:w-auto justify-center">
+
+            <div id="scroll-content-area" class="w-full md:w-2/3 p-4 md:p-8 relative overflow-y-auto no-scrollbar bg-[#1e1e1e]" onscroll="handleScroll(this)">
+                
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-3 sticky top-0 md:static z-10 py-2">
+                    <h3 class="text-lg md:text-2xl font-bold text-white text-center md:text-left hidden md:block" id="lbl-details">Arazi Parametreleri</h3>
+                    <button onclick="downloadReport()" class="bg-primary hover:bg-primary-hover text-black px-6 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg w-full md:w-auto transform active:scale-95">
                         <span class="material-symbols-outlined">download</span> <span id="btn-dl">Fizibilite Raporu (PDF)</span>
                     </button>
                 </div>
+
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 pb-12" id="metrics-grid"></div>
+                
+                <div class="h-24 md:hidden"></div>
             </div>
         </div>
     </div>
@@ -123,7 +139,6 @@
         const T = {
             'TR': { 
                 ph:'Konum ara... (Örn: Sarıcakaya)', btn:'ANALİZİ BAŞLAT', load:'CBS Verileri İşleniyor...', 
-                // AKADEMİK JARGON: Alper Hoca bunları sever
                 logs:['OSM Vektör Verisi Çekiliyor...','LULC (Arazi Kullanım) Analizi...','Hidrografik Mesafe Ölçümü...','Mikroklima Verisi İşleniyor...'], 
                 live:'CBS ANALİZİ', score:'UYGUNLUK SKORU', dl:'FİZİBİLİTE RAPORU (PDF)', rad:'Tarama Çapı (Buffer)', det:'Arazi Parametreleri', 
                 high:'Yüksek Potansiyel', risk:'Kısıtlı/Riskli Alan', not_found:'Veri Yok', access_err:'Erişim Kısıtlı',
@@ -158,13 +173,58 @@
         let progressInterval;
 
         function initMap() {
-            // ESKİŞEHİR KOORDİNATLARI (ESTÜ CİVARI) - HOCA AÇINCA BURAYI GÖRECEK
             map = L.map('map', { zoomControl: false }).setView([39.8105, 30.5050], 12); 
             var sat = L.tileLayer('https://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', {attribution:'Google Satellite | BeeLocate'});
             sat.addTo(map);
             L.control.zoom({position:'bottomright'}).addTo(map);
             heatLayerGroup = L.layerGroup().addTo(map);
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
+        }
+
+        // --- STICKY HEADER ANİMASYONU ---
+        function handleScroll(el) {
+            if (window.innerWidth >= 768) return; // Masaüstünde çalışma
+
+            const scrollTop = el.scrollTop;
+            const header = document.getElementById('mobile-sticky-header');
+            const inner = document.getElementById('header-inner');
+            const scoreVal = document.getElementById('score-val');
+            const descContainer = document.getElementById('desc-container');
+            const badgeContainer = document.getElementById('badge-container');
+            const scoreContainer = document.getElementById('score-container');
+
+            if (scrollTop > 50) {
+                // KÜÇÜLT
+                inner.classList.remove('p-5');
+                inner.classList.add('p-2', 'flex-row', 'items-center', 'justify-between');
+                
+                scoreVal.classList.remove('text-7xl');
+                scoreVal.classList.add('text-4xl');
+                
+                descContainer.style.maxHeight = '0px';
+                descContainer.style.opacity = '0';
+                descContainer.style.marginTop = '0px';
+
+                badgeContainer.style.opacity = '0'; 
+                badgeContainer.style.height = '0px';
+                badgeContainer.style.marginBottom = '0px';
+
+            } else {
+                // BÜYÜT
+                inner.classList.add('p-5');
+                inner.classList.remove('p-2', 'flex-row', 'items-center', 'justify-between');
+                
+                scoreVal.classList.add('text-7xl');
+                scoreVal.classList.remove('text-4xl');
+                
+                descContainer.style.maxHeight = '200px';
+                descContainer.style.opacity = '1';
+                descContainer.style.marginTop = '16px';
+
+                badgeContainer.style.opacity = '1';
+                badgeContainer.style.height = 'auto';
+                badgeContainer.style.marginBottom = '8px';
+            }
         }
 
         function updateLocation(lat, lng) {
@@ -223,7 +283,7 @@
                 
                 el.innerText = Math.floor(percent) + "%";
                 
-                if (percent > (logIndex + 1) * 20 && logIndex < logs.length) { // Log hızını artırdım
+                if (percent > (logIndex + 1) * 20 && logIndex < logs.length) {
                     let p = document.createElement('p'); 
                     p.innerText = logs[logIndex]; 
                     p.style.color = '#4ade80';
