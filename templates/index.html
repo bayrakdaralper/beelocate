@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v2.1</title> <script src="https://cdn.tailwindcss.com"></script>
+<title>BeeLocate PRO v2.2</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -82,7 +83,7 @@
         
         <div id="main-scroll-container" class="bg-[#1e1e1e] w-full md:w-full md:max-w-6xl md:rounded-3xl rounded-t-3xl border-t md:border border-white/10 shadow-2xl h-[90vh] md:h-[750px] relative slide-up overflow-y-auto md:overflow-hidden no-scrollbar" onscroll="handleScroll(this)">
             
-            <button onclick="closeModalBtn()" class="absolute top-4 right-4 z-50 bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-2 transition shadow-lg backdrop-blur-md sticky float-right">
+            <button onclick="closeModalBtn()" class="fixed md:absolute top-6 right-4 md:top-4 md:right-4 z-[60] bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-2 transition shadow-lg backdrop-blur-md">
                 <span class="material-symbols-outlined text-2xl">close</span>
             </button>
 
@@ -184,33 +185,32 @@
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
         }
 
-        // --- DÜZELTİLMİŞ JS MANTIĞI ---
+        // --- GÜNCELLENMİŞ STICKY JS ---
         function handleScroll(el) {
             if (window.innerWidth >= 768) return; 
 
-            // Artık kaydırma miktarını ANA KUTUDAN (el) alıyoruz
             const scrollTop = el.scrollTop;
-            
-            const header = document.getElementById('mobile-sticky-header');
             const inner = document.getElementById('header-inner');
             const scoreVal = document.getElementById('score-val');
             const descContainer = document.getElementById('desc-container');
             const badgeContainer = document.getElementById('badge-container');
             
-            // Eğer 50px'den fazla aşağı kaydırıldıysa küçült
             if (scrollTop > 50) {
+                // KÜÇÜLTME MODU
+                // padding'i p-2 yerine py-3 px-4 yaptık (Nefes payı)
                 inner.classList.remove('p-5');
-                inner.classList.add('p-2', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#252525]/95', 'backdrop-blur');
+                inner.classList.add('py-3', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#252525]/95', 'backdrop-blur');
                 
                 scoreVal.classList.remove('text-7xl');
                 scoreVal.classList.add('text-4xl');
                 
-                descContainer.style.display = 'none'; // Direkt yok et
+                descContainer.style.display = 'none'; 
                 badgeContainer.style.display = 'none';
 
             } else {
+                // NORMAL MOD
                 inner.classList.add('p-5');
-                inner.classList.remove('p-2', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#252525]/95', 'backdrop-blur');
+                inner.classList.remove('py-3', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#252525]/95', 'backdrop-blur');
                 
                 scoreVal.classList.add('text-7xl');
                 scoreVal.classList.remove('text-4xl');
