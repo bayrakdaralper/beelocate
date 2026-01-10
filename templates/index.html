@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v2.2</title>
+<title>BeeLocate PRO v2.3</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -185,7 +185,7 @@
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
         }
 
-        // --- GÜNCELLENMİŞ STICKY JS ---
+        // --- STICKY DÜZENLEME (BOŞLUK ARTIRILDI) ---
         function handleScroll(el) {
             if (window.innerWidth >= 768) return; 
 
@@ -197,9 +197,9 @@
             
             if (scrollTop > 50) {
                 // KÜÇÜLTME MODU
-                // padding'i p-2 yerine py-3 px-4 yaptık (Nefes payı)
+                // pt-10 ekledik (üstten 40px boşluk)
                 inner.classList.remove('p-5');
-                inner.classList.add('py-3', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#252525]/95', 'backdrop-blur');
+                inner.classList.add('pt-10', 'pb-3', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#252525]/95', 'backdrop-blur');
                 
                 scoreVal.classList.remove('text-7xl');
                 scoreVal.classList.add('text-4xl');
@@ -210,7 +210,7 @@
             } else {
                 // NORMAL MOD
                 inner.classList.add('p-5');
-                inner.classList.remove('py-3', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#252525]/95', 'backdrop-blur');
+                inner.classList.remove('pt-10', 'pb-3', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#252525]/95', 'backdrop-blur');
                 
                 scoreVal.classList.add('text-7xl');
                 scoreVal.classList.remove('text-4xl');
