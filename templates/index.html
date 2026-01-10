@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v2.4</title>
+<title>BeeLocate PRO v2.5</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -185,7 +185,7 @@
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
         }
 
-        // --- GÜNCELLENMİŞ STICKY JS (SAFE AREA FIX) ---
+        // --- GÜNCELLENMİŞ STICKY JS (SAFE AREA FIX v2 - Bottom Align) ---
         function handleScroll(el) {
             if (window.innerWidth >= 768) return; 
 
@@ -197,10 +197,9 @@
             
             if (scrollTop > 50) {
                 // KÜÇÜLTME MODU
-                // pt-16 (64px) yaptık, üstten çok daha fazla boşluk bırakır.
-                // bg-[#1e1e1e] yaptık (Full Opak), şeffaflık sorununu giderir.
+                // h-28 (112px) yüksekliğe sabitle, items-end ile yazıyı DİBE it, pb-4 ile alttan boşluk ver.
                 inner.classList.remove('p-5');
-                inner.classList.add('pt-16', 'pb-3', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#1e1e1e]', 'shadow-xl');
+                inner.classList.add('h-28', 'items-end', 'pb-4', 'px-4', 'flex-row', 'justify-between', 'border-b', 'border-white/10', 'bg-[#1e1e1e]', 'shadow-xl');
                 
                 scoreVal.classList.remove('text-7xl');
                 scoreVal.classList.add('text-4xl');
@@ -211,7 +210,7 @@
             } else {
                 // NORMAL MOD
                 inner.classList.add('p-5');
-                inner.classList.remove('pt-16', 'pb-3', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#1e1e1e]', 'shadow-xl');
+                inner.classList.remove('h-28', 'items-end', 'pb-4', 'px-4', 'flex-row', 'justify-between', 'border-b', 'border-white/10', 'bg-[#1e1e1e]', 'shadow-xl');
                 
                 scoreVal.classList.add('text-7xl');
                 scoreVal.classList.remove('text-4xl');
