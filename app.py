@@ -9,7 +9,6 @@ import requests
 import numpy as np
 import io
 import traceback
-import random # Demo modu için
 from datetime import datetime
 from math import sqrt, atan2, degrees, pi
 import matplotlib
@@ -19,10 +18,10 @@ import tempfile
 import os
 
 app = Flask(__name__)
-# Cache ayarları (Hafızada tutma)
+# Basit Cache (Hafıza) - Hız için şart
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 600})
 
-# --- DİL AYARLARI ---
+# --- DİL VE METİN AYARLARI ---
 TRANS = {
     'TR': {
         'title': 'ARICILIK SAHA ANALIZ RAPORU', 'score': 'SKOR', 
@@ -57,116 +56,115 @@ TRANS = {
 }
 
 def tr_chars(text):
-    replacements = {'ğ':'g','Ğ':'G','ü':'u','Ü':'U','ş':'s','Ş':'S','ı':'i','İ':'I','ö':'o','Ö':'O','ç':'c','Ç':'C'}
-    for k,v in replacements.items(): text = str(text).replace(k,v)
+    replacements = {'ğ':'g', 'Ğ':'G', 'ü':'u', 'Ü':'U', 'ş':'s', 'Ş':'S', 'ı':'i', 'İ':'I', 'ö':'o', 'Ö':'O', 'ç':'c', 'Ç':'C'}
+    for k, v in replacements.items(): text = str(text).replace(k, v)
     return text
 
 def translate_dir(code, lang="TR"):
-    tr = {"N":"Kuzey", "NE":"Kuzeydogu", "E":"Dogu", "SE":"Guneydogu", "S":"Guney", "SW":"Guneybati", "W":"Bati", "NW":"Kuzeybati"}
-    en = {"N":"North", "NE":"Northeast", "E":"East", "SE":"Southeast", "S":"South", "SW":"Southwest", "W":"West", "NW":"Northwest"}
+    tr = {"N": "Kuzey", "NE": "Kuzeydogu", "E": "Dogu", "SE": "Guneydogu", "S": "Guney", "SW": "Guneybati", "W": "Bati", "NW": "Kuzeybati"}
+    en = {"N": "North", "NE": "Northeast", "E": "East", "SE": "Southeast", "S": "South", "SW": "Southwest", "W": "West", "NW": "Northwest"}
     return tr.get(code, code) if lang == "TR" else en.get(code, code)
 
 def degree_to_dir_code(deg):
-    val = int((deg/22.5) + .5); arr = ["N","NE","NE","E","E","SE","SE","S","S","SW","SW","W","W","NW","NW","N"]
+    val = int((deg/22.5) + .5)
+    arr = ["N", "NE", "NE", "E", "E", "SE", "SE", "S", "S", "SW", "SW", "W", "W", "NW", "NW", "N"]
     return arr[(val % 16)]
 
 def create_radar_chart(scores):
     try:
         labels = ['Flora', 'Su', 'Ruzgar', 'Baki', 'Sicaklik', 'Ulasim', 'Yerlesim', 'Egim']
         stats = [scores['flora'], scores['water'], scores['wind'], scores['aspect'], scores['temp'], scores['road'], scores['build'], scores['slope']]
-        stats += stats[:1]; angles = np.linspace(0, 2*pi, len(labels), endpoint=False).tolist(); angles += angles[:1]
-        fig, ax = plt.subplots(figsize=(6,6), subplot_kw=dict(polar=True))
-        ax.fill(angles, stats, color='#FFC107', alpha=0.25); ax.plot(angles, stats, color='#FFC107', linewidth=2)
-        ax.set_yticklabels([]); ax.set_xticks(angles[:-1]); ax.set_xticklabels(labels, size=9, color="grey")
-        ax.spines['polar'].set_visible(False); ax.grid(color='grey', alpha=0.3)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png'); plt.savefig(tmp.name, transparent=True, dpi=100); plt.close()
-        return tmp.name
+        stats += stats[:1]
+        angles = np.linspace(0, 2*pi, len(labels), endpoint=False).tolist()
+        angles += angles[:1]
+        fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+        ax.fill(angles, stats, color='#FFC107', alpha=0.25)
+        ax.plot(angles, stats, color='#FFC107', linewidth=2)
+        ax.set_yticklabels([])
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(labels, size=9, color="grey")
+        ax.spines['polar'].set_visible(False)
+        ax.grid(color='grey', alpha=0.3)
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+        plt.savefig(tmp_file.name, transparent=True, dpi=100)
+        plt.close()
+        return tmp_file.name
     except: return None
 
 def get_meteo_extended(lat, lng):
     try:
-        r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current=temperature_2m&daily=temperature_2m_max,relative_humidity_2m_mean,wind_speed_10m_max,winddirection_10m_dominant,sunrise,sunset&timezone=auto&forecast_days=7", timeout=4).json()
-        d = r.get('daily',{}); c = r.get('current',{})
-        return {'cur_temp': c.get('temperature_2m',0), 'avg_temp': round(np.mean(d.get('temperature_2m_max',[20])),1),
-                'avg_wind': round(np.mean(d.get('wind_speed_10m_max',[5])),1), 'wind_dir': d.get('winddirection_10m_dominant',[0])[0],
-                'avg_hum': 50}
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current=temperature_2m&daily=temperature_2m_max,relative_humidity_2m_mean,wind_speed_10m_max,winddirection_10m_dominant,sunrise,sunset&timezone=auto&forecast_days=7"
+        r = requests.get(url, timeout=4).json()
+        d = r.get('daily', {}); c = r.get('current', {})
+        return {
+            'cur_temp': c.get('temperature_2m', 0),
+            'avg_temp': round(np.mean(d.get('temperature_2m_max', [20])), 1),
+            'avg_wind': round(np.mean(d.get('wind_speed_10m_max', [5])), 1),
+            'avg_hum': int(np.mean(d.get('relative_humidity_2m_mean', [50]))),
+            'wind_dir': d.get('winddirection_10m_dominant', [0])[0]
+        }
     except: return {'cur_temp':20, 'avg_temp':20, 'avg_wind':5, 'wind_dir':0, 'avg_hum':50}
 
 def get_terrain_pro(lat, lng):
     try:
-        e = requests.get(f"https://api.open-meteo.com/v1/elevation?latitude={lat},{lat+0.001},{lat}&longitude={lng},{lng},{lng+0.001}", timeout=3).json().get('elevation',[0,0,0])
-        dz_dx, dz_dy = (e[2]-e[0])/90, (e[1]-e[0])/90; s_rad = atan2(sqrt(dz_dx**2+dz_dy**2), 1)
+        url = f"https://api.open-meteo.com/v1/elevation?latitude={lat},{lat+0.001},{lat}&longitude={lng},{lng},{lng+0.001}"
+        e = requests.get(url, timeout=3).json().get('elevation', [0,0,0])
+        dz_dx, dz_dy = (e[2]-e[0])/90, (e[1]-e[0])/90
+        s_rad = atan2(sqrt(dz_dx**2 + dz_dy**2), 1)
         asp = degrees(atan2(dz_dy, -dz_dx)); asp = asp+360 if asp<0 else asp
-        dirs = ["E","NE","N","NW","W","SW","S","SE"]; return abs(np.tan(s_rad)*100), degrees(s_rad), dirs[int((asp+22.5)/45)%8], int(e[0])
+        dirs = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
+        return abs(np.tan(s_rad)*100), degrees(s_rad), dirs[int((asp+22.5)/45)%8], int(e[0])
     except: return 0, 0, "N", 0
 
 def calculate_score(lat, lng, radius=2000, lang="TR"):
     # Cache Kontrolü
-    try:
-        cache_key = f"v4_score_{round(lat,4)}_{round(lng,4)}_{radius}_{lang}"
-        cached = cache.get(cache_key)
-        if cached: return cached
-    except: pass # Cache hatası olursa devam et
+    cache_key = f"stable_score_{round(lat,4)}_{round(lng,4)}_{radius}_{lang}"
+    cached = cache.get(cache_key)
+    if cached: return cached
 
-    # --- HATA YÖNETİMİ: DEMO KURTARICI ---
-    # Eğer OSMnx hata verirse veya çok uzun sürerse, sistem çökmesin diye
-    # "Mantıklı Rastgele Değerler" üreten bir güvenli mod.
-    try: 
-        ox.settings.timeout = 30
-        gdf = ox.features_from_point((lat, lng), {'natural':['water','wood','scrub','grassland'], 'waterway':True, 'landuse':['forest','orchard','farmland','meadow','grass'], 'building':True, 'highway':['motorway','primary','secondary']}, dist=3000)
-        
-        p = Point(lng, lat); f=gpd.GeoDataFrame(); w=gpd.GeoDataFrame(); b=gpd.GeoDataFrame(); r=gpd.GeoDataFrame()
-        if not gdf.empty:
-            if 'natural' in gdf: f=pd.concat([f, gdf[gdf['natural'].isin(['wood','scrub','grassland'])]])
-            if 'landuse' in gdf: f=pd.concat([f, gdf[gdf['landuse'].isin(['forest','orchard','farmland','meadow','grass'])]])
-            if 'natural' in gdf: w=pd.concat([w, gdf[gdf['natural']=='water']])
-            if 'waterway' in gdf: w=pd.concat([w, gdf[gdf['waterway'].notna()]])
-            if 'building' in gdf: b=gdf[gdf['building'].notna()]
-            if 'highway' in gdf: r=gdf[gdf['highway'].notna()]
-            
-        d_flora = f.distance(p).min()*111000 if not f.empty else 9999
-        b_count = len(b)
-        d_water = w.distance(p).min()*111000 if not w.empty else 9999
-        d_road = r.distance(p).min()*111000 if not r.empty else 9999
-        
-        # Flora Adı
-        flora_name = "Bilinmiyor"
-        if not f.empty:
-            near = f.iloc[f.distance(p).argmin()]
-            ts = str(near.get('natural',''))+str(near.get('landuse',''))
-            if "wood" in ts or "forest" in ts: flora_name = "Orman"
-            elif "meadow" in ts or "grass" in ts: flora_name = "Mera"
-            elif "farm" in ts: flora_name = "Tarim"
-            else: flora_name = "Calilik"
-        else:
-            if b_count < 20: flora_name = "Dogal/Kirsal"
+    tags = {'natural':['water','wood','scrub','grassland'], 'waterway':True, 'landuse':['forest','orchard','farmland','meadow','grass'], 'building':True, 'highway':['motorway','primary','secondary']}
     
-    except Exception as e:
-        print("OSM Hatasi, Demo Modu Devrede:", e)
-        # Hata durumunda varsayılan değerler
-        d_flora = random.randint(100, 1500)
-        b_count = random.randint(0, 50)
-        d_water = random.randint(500, 4000)
-        d_road = random.randint(200, 2000)
-        flora_name = "Dogal Ortus"
+    try: 
+        ox.settings.timeout = 20
+        gdf = ox.features_from_point((lat, lng), tags, dist=1500)
+    except: gdf = gpd.GeoDataFrame()
+    
+    p = Point(lng, lat); f=gpd.GeoDataFrame(); w=gpd.GeoDataFrame(); b=gpd.GeoDataFrame(); r=gpd.GeoDataFrame()
+    if not gdf.empty:
+        if 'natural' in gdf.columns: f = pd.concat([f, gdf[gdf['natural'].isin(['wood','scrub','grassland'])]])
+        if 'landuse' in gdf.columns: f = pd.concat([f, gdf[gdf['landuse'].isin(['forest','orchard','farmland','meadow','grass'])]])
+        if 'natural' in gdf.columns: w = pd.concat([w, gdf[gdf['natural']=='water']])
+        if 'waterway' in gdf.columns: w = pd.concat([w, gdf[gdf['waterway'].notna()]])
+        if 'building' in gdf.columns: b = gdf[gdf['building'].notna()]
+        if 'highway' in gdf.columns: r = gdf[gdf['highway'].notna()]
 
-    # Diğer API'ler (Meteoroloji)
     meteo = get_meteo_extended(lat, lng)
     slope_pct, slope_deg, aspect_dir, elevation = get_terrain_pro(lat, lng)
 
-    # Puanlama Mantığı
-    s_f = 100 if d_flora < 100 else max(0, 100-(d_flora/3000)*100)
+    # Flora Mantığı
+    d_flora = 9999; flora_name = "Bilinmiyor" if lang=="TR" else "Unknown"
+    if not f.empty:
+        d_flora = f.distance(p).min()*111000
+        near = f.iloc[f.distance(p).argmin()]
+        ts = str(near.get('natural',''))+str(near.get('landuse',''))
+        if "wood" in ts or "forest" in ts: flora_name = "Orman"
+        elif "meadow" in ts or "grass" in ts: flora_name = "Mera"
+        elif "farm" in ts: flora_name = "Tarim"
+        else: flora_name = "Calilik"
+    
+    s_f = 100 if d_flora < 100 else max(0, 100-(d_flora/2000)*100)
     if "Tarim" in flora_name: s_f *= 0.7
     
     asp_sc = {'S':100,'SE':100,'SW':90,'E':80,'W':50,'NE':30,'NW':20,'N':10}
     s_a = asp_sc.get(aspect_dir, 50)
-    
     s_w = 100 if meteo['avg_wind']<15 else max(0, 100-(meteo['avg_wind']-15)*5)
     s_t = 100 if 15<=meteo['avg_temp']<=30 else 50
-    s_b = 100 if b_count < 10 else max(0, 100-b_count*1.5)
-    s_wt = 0 if d_water > 3000 else (100 if d_water<1000 else max(0, 100-(d_water/3000)*100))
+    cnt = len(b); s_b = 100 if cnt < 10 else max(0, 100-cnt*1.5)
+    dw = w.distance(p).min()*111000 if not w.empty else 9999
+    s_wt = 0 if dw > 3000 else (100 if dw<1000 else max(0, 100-(dw/3000)*100))
     s_sl = 100 if 0<=slope_pct<=30 else 20
-    s_r = 100 if 200<d_road<3000 else 40
+    dr = r.distance(p).min()*111000 if not r.empty else 9999
+    s_r = 100 if 200<dr<3000 else 40
     
     total = (s_f*0.35)+(s_a*0.10)+(s_w*0.10)+(s_t*0.05)+(s_b*0.10)+(s_wt*0.15)+(s_sl*0.05)+(s_r*0.10)
     wind_code = degree_to_dir_code(meteo['wind_dir'])
@@ -175,7 +173,7 @@ def calculate_score(lat, lng, radius=2000, lang="TR"):
     dets = {
         'flora_type': flora_name, 'd_flora': int(d_flora), 'dir': aspect_dir, 'dir_tr': translate_dir(aspect_dir, lang), 
         'avg_wind': meteo['avg_wind'], 'wind_dir': wind_code, 'avg_temp': meteo['avg_temp'], 'avg_hum': meteo['avg_hum'],
-        'b_count': b_count, 'd_water': int(d_water), 's_val': int(slope_pct), 'd_road': int(d_road), 'elevation': elevation
+        'b_count': cnt, 'd_water': int(dw), 's_val': int(slope_pct), 'd_road': int(dr), 'elevation': elevation
     }
     
     res = (int(total), subs, dets)
@@ -209,34 +207,29 @@ def analyze():
         data = request.json; lang = data.get('lang', 'TR')
         lat, lng, rad = data['lat'], data['lng'], int(data['radius'])
         
-        # Hata Yakalama Bloğu ile Hesaplama
-        try:
-            score, subs, dets = calculate_score(lat, lng, rad, lang)
-        except Exception as inner_e:
-            print("Hesaplama Hatasi:", inner_e)
-            # Kritik hata olursa sahte veri dön (Demoyu kurtar)
-            score = 75
-            subs = {'flora':70,'water':60,'wind':80,'aspect':90,'temp':100,'build':50,'slope':80,'road':70}
-            dets = {'flora_type':'Mera','avg_wind':12,'wind_dir':'NE','avg_temp':22,'avg_hum':50,'b_count':5,'d_water':1200,'d_road':800,'s_val':5,'elevation':800,'dir_tr':'Kuzeydogu'}
-
+        # Basit, düz işlem (Karmaşık hata yakalama yok)
+        score, subs, dets = calculate_score(lat, lng, rad, lang)
+        
+        # Metin Oluşturma (Yeni Frontend için gerekli)
         L = TRANS[lang]
         wind_txt = L['wi_warn'].format(spd=dets['avg_wind']) if dets['avg_wind'] > 20 else ""
         water_msg = (L['w_good'] if dets['d_water'] < 2000 else L['w_bad']) + f" ({dets['d_water']}m)" if dets['d_water'] < 5000 else L['not_found']
         
         if dets['flora_type'] in ["Bilinmiyor", "Unknown"]:
-            ai_text = L['err_summary'].format(wind=dets.get('dir_tr','-'), water_txt=water_msg)
+            ai_text = L['err_summary'].format(wind=dets['dir_tr'], water_txt=water_msg)
         else:
-            ai_text = L['std_summary'].format(flora=dets.get('flora_type','-'), wind=dets.get('dir_tr','-'), water_txt=water_msg, wind_txt=wind_txt)
+            ai_text = L['std_summary'].format(flora=dets['flora_type'], wind=dets['dir_tr'], water_txt=water_msg, wind_txt=wind_txt)
 
-        grid = []
+        # Isı Haritası
+        grid = []; off = rad/111000
         for i in range(5):
             val = score if i==0 else max(0, min(100, score + np.random.randint(-15, 10)))
             grid.append({'lat': lat + (np.random.random()-0.5)*0.01, 'lng': lng + (np.random.random()-0.5)*0.01, 'val': val})
             
         return jsonify({'score': score, 'breakdown': subs, 'details': dets, 'heatmap': grid, 'ai_text': ai_text})
     except Exception as e:
-        print("GENEL HATA:", traceback.format_exc())
-        return jsonify({'error': 'Sunucu yogun, lutfen tekrar deneyin.'}), 500
+        print("HATA:", traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/download_report')
 def download_report():
@@ -259,7 +252,12 @@ def download_report():
         pdf.chapter_title(L['ch_1']); pdf.set_font('Arial','',10)
         water_txt = L['w_good'] if d['d_water'] < 2000 else L['w_bad']
         wind_txt = L['wi_warn'].format(spd=d['avg_wind']) if d['avg_wind'] > 20 else ""
-        summary = L['std_summary'].format(flora=tr_chars(d['flora_type']), wind=tr_chars(d['dir_tr']), water_txt=tr_chars(water_txt), wind_txt=tr_chars(wind_txt))
+        
+        if d['flora_type'] in ["Bilinmiyor", "Unknown"]:
+            summary = L['err_summary'].format(wind=tr_chars(d['dir_tr']), water_txt=tr_chars(water_txt))
+        else:
+            summary = L['std_summary'].format(flora=tr_chars(d['flora_type']), wind=tr_chars(d['dir_tr']), water_txt=tr_chars(water_txt), wind_txt=tr_chars(wind_txt))
+            
         pdf.multi_cell(0,6,tr_chars(summary)); pdf.ln(10)
 
         pdf.chapter_title(L['ch_2'])
