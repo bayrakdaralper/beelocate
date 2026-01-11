@@ -88,15 +88,25 @@
                 <span class="material-symbols-outlined text-2xl">close</span>
             </button>
 
-            <div id="sticky-mini-header" class="absolute top-0 left-0 w-full h-20 bg-[#1e1e1e] border-b border-white/10 z-[60] flex items-center justify-between px-6 opacity-0 pointer-events-none transition-opacity duration-300 rounded-t-3xl">
-                <div class="flex items-center gap-3">
-                    <span class="text-3xl font-black text-primary" id="mini-score-val">0</span>
-                    <div class="flex flex-col">
-                        <span class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">SKOR</span>
-                        <span class="text-xs font-bold text-green-400" id="mini-score-comment">--</span>
-                    </div>
+        <div class="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 md:w-[600px] z-20 flex flex-col gap-3 pointer-events-none">
+        <div class="flex justify-between items-center px-2 pointer-events-auto">
+            <a href="/" class="flex items-center gap-2 drop-shadow-md bg-black/60 px-4 py-2 rounded-full backdrop-blur cursor-pointer border border-white/10 hover:bg-black/80 transition group">
+                <span class="material-symbols-outlined text-primary text-3xl group-hover:scale-110 transition">hive</span>
+                <h1 class="text-xl font-bold tracking-tight">BeeLocate <span class="text-primary">PRO</span></h1>
+            </a>
+
+            <div class="flex items-center gap-2">
+                <a href="mailto:info@beelocatepro.com" class="bg-black/60 backdrop-blur-md rounded-full w-8 h-8 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300" title="İletişim / Contact">
+                    <span class="material-symbols-outlined text-lg">mail</span>
+                </a>
+
+                <div class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-8 items-center">
+                    <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
+                    <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
                 </div>
             </div>
+        </div>
+    </div>
 
             <div id="main-scroll-container" class="h-full overflow-y-auto no-scrollbar" onscroll="handleScroll(this)">
                 <div class="flex flex-col md:flex-row min-h-full">
