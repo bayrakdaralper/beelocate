@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v3.1</title>
+<title>BeeLocate PRO v3.2</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -16,6 +16,7 @@
     tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#FFC107", "primary-hover": "#FFB300", "bg-dark": "#212121", "surface": "#1a1a1a" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
 </script>
 <style>
+    /* Body kaydırmasını engelle */
     body { overscroll-behavior-y: none; position: fixed; width: 100%; height: 100%; overflow: hidden; }
     #map { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
     .radar-spinner { width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, rgba(255, 193, 7, 0.5) 100%); animation: radar-spin 1.5s linear infinite; position: relative; }
@@ -81,6 +82,7 @@
 
     <div id="result-modal" class="fixed inset-0 z-40 hidden flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onclick="closeModal(event)">
         <div id="modal-content" class="bg-[#1e1e1e] w-full md:w-full md:max-w-6xl md:rounded-3xl rounded-t-3xl border-t md:border border-white/10 shadow-2xl h-[85vh] md:h-[750px] relative slide-up overflow-hidden" onclick="event.stopPropagation()">
+            
             <button onclick="closeModalBtn()" class="absolute top-4 right-4 z-[70] bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-2 transition shadow-lg backdrop-blur-md">
                 <span class="material-symbols-outlined text-2xl">close</span>
             </button>
@@ -152,7 +154,6 @@
                 lbl: {flora:'VEGETATION', water:'HYDROGRAPHY', wind:'WIND SPEED', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'TRANSPORT NETWORK', build:'ANTHROPOGENIC PRESSURE', elev:'ELEVATION (DEM)', temp:'TEMP'}
             }
         };
-        
         const INFO = { 'VEJETASYON': 'Flora nektar potansiyeli.', 'HİDROGRAFİ': 'Suya mesafe.', 'RÜZGAR HIZI': 'Rüzgar uygunluğu.', 'BAKI ANALİZİ': 'Güneşlenme.', 'NEM': 'Bağıl nem.', 'EĞİM': 'Arazi eğimi.', 'ULAŞIM AĞI': 'Yola mesafe.', 'ANTROPOJENİK BASKI': 'Yerleşim yoğunluğu.', 'RAKIM (DEM)': 'Yükseklik.', 'SICAKLIK': 'Ortalama sıcaklık.' };
         
         let lang = 'TR';
@@ -170,31 +171,29 @@
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
         }
 
-        // --- DİL DEĞİŞTİRME FONKSİYONU (DÜZELTİLDİ) ---
-        function setLang(l) { 
-            lang = l; 
+        // --- BUTON VE DİL FONKSİYONU ---
+        function setLang(l) {
+            lang = l;
             
-            // Buton Renklerini Güncelle
             const btnTr = document.getElementById('btn-tr');
             const btnEn = document.getElementById('btn-en');
             
+            // Temel stiller (Tailwind)
+            const activeStyle = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition";
+            const inactiveStyle = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white";
+
             if (l === 'TR') {
-                btnTr.className = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition";
-                btnEn.className = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white";
+                btnTr.className = activeStyle;
+                btnEn.className = inactiveStyle;
             } else {
-                btnEn.className = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition";
-                btnTr.className = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white";
+                btnEn.className = activeStyle;
+                btnTr.className = inactiveStyle;
             }
 
-            // Metinleri Güncelle (Analiz yapmadan)
+            // Sadece statik metinleri değiştir (ANALİZİ YENİLEME)
             document.getElementById('search-input').placeholder = T[lang].ph;
             document.getElementById('btn-analyze-text').innerText = T[lang].btn;
             document.getElementById('lbl-rad').innerText = T[lang].rad;
-            
-            // Eğer daha önce analiz yapılmışsa, verileri yeni dilde çekmek için tekrar çalıştır
-            if(currentData && sLat && sLng) {
-                runSmartAnalysis();
-            }
         }
 
         function handleScroll(el) {
@@ -275,8 +274,8 @@
 
             document.getElementById('mini-score-val').innerText = currentData.score;
             document.getElementById('mini-score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
-            document.getElementById('lbl-details').innerText = L.det; // Başlık da değişsin
-            document.getElementById('btn-dl').innerText = L.dl; // Buton da değişsin
+            document.getElementById('lbl-details').innerText = L.det; 
+            document.getElementById('btn-dl').innerText = L.dl; 
 
             const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m";
             const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
@@ -296,7 +295,6 @@
             const grid = document.getElementById('metrics-grid'); grid.innerHTML = '';
             metrics.forEach(m => {
                 const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500");
-                const infoText = INFO[m.l] || ""; // Info tooltip metni eklenebilir
                 grid.innerHTML += `
                 <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between relative group hover:border-primary/50 transition">
                     <div class="flex justify-between items-start mb-2">
