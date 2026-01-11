@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v2.5</title>
+<title>BeeLocate PRO v2.6</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -16,6 +16,9 @@
     tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#FFC107", "primary-hover": "#FFB300", "bg-dark": "#212121", "surface": "#1a1a1a" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
 </script>
 <style>
+    /* BODY SCROLL KİLİDİ: Sayfanın tamamının yukarı kaymasını engeller */
+    body { overscroll-behavior-y: none; position: fixed; width: 100%; height: 100%; overflow: hidden; }
+    
     #map { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
     .radar-spinner { width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, rgba(255, 193, 7, 0.5) 100%); animation: radar-spin 1.5s linear infinite; position: relative; }
     .radar-spinner::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: #212121; }
@@ -30,7 +33,7 @@
     @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 </style>
 </head>
-<body class="bg-bg-dark text-white font-display overflow-hidden">
+<body class="bg-bg-dark text-white font-display">
 
     <div class="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 md:w-[600px] z-20 flex flex-col gap-3 pointer-events-none">
         <div class="flex justify-between items-center px-2 pointer-events-auto">
@@ -132,7 +135,7 @@
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 pb-12" id="metrics-grid"></div>
                     
-                    <div class="h-24 md:hidden"></div>
+                    <div class="h-32 md:hidden"></div>
                 </div>
 
             </div>
@@ -185,7 +188,7 @@
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
         }
 
-        // --- GÜNCELLENMİŞ STICKY JS (SAFE AREA FIX v2 - Bottom Align) ---
+        // --- STICKY FIX (H-36 & PT-16) ---
         function handleScroll(el) {
             if (window.innerWidth >= 768) return; 
 
@@ -197,9 +200,11 @@
             
             if (scrollTop > 50) {
                 // KÜÇÜLTME MODU
-                // h-28 (112px) yüksekliğe sabitle, items-end ile yazıyı DİBE it, pb-4 ile alttan boşluk ver.
+                // h-36 (144px) yaptık - Çok yüksek bir başlık.
+                // pt-16 (64px) yaptık - Üstten çok boşluk.
+                // bg-[#1e1e1e] ile opak yaptık.
                 inner.classList.remove('p-5');
-                inner.classList.add('h-28', 'items-end', 'pb-4', 'px-4', 'flex-row', 'justify-between', 'border-b', 'border-white/10', 'bg-[#1e1e1e]', 'shadow-xl');
+                inner.classList.add('h-36', 'items-end', 'pb-4', 'pt-16', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#1e1e1e]', 'shadow-xl');
                 
                 scoreVal.classList.remove('text-7xl');
                 scoreVal.classList.add('text-4xl');
@@ -210,7 +215,7 @@
             } else {
                 // NORMAL MOD
                 inner.classList.add('p-5');
-                inner.classList.remove('h-28', 'items-end', 'pb-4', 'px-4', 'flex-row', 'justify-between', 'border-b', 'border-white/10', 'bg-[#1e1e1e]', 'shadow-xl');
+                inner.classList.remove('h-36', 'items-end', 'pb-4', 'pt-16', 'px-4', 'flex-row', 'items-center', 'justify-between', 'border-b', 'border-white/10', 'bg-[#1e1e1e]', 'shadow-xl');
                 
                 scoreVal.classList.add('text-7xl');
                 scoreVal.classList.remove('text-4xl');
