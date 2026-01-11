@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v3.2</title>
+<title>BeeLocate PRO v3.3</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -16,7 +16,6 @@
     tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#FFC107", "primary-hover": "#FFB300", "bg-dark": "#212121", "surface": "#1a1a1a" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
 </script>
 <style>
-    /* Body kaydırmasını engelle */
     body { overscroll-behavior-y: none; position: fixed; width: 100%; height: 100%; overflow: hidden; }
     #map { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
     .radar-spinner { width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, rgba(255, 193, 7, 0.5) 100%); animation: radar-spin 1.5s linear infinite; position: relative; }
@@ -30,6 +29,8 @@
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     .slide-up { animation: slideUp 0.3s ease-out forwards; }
     @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    /* Tippy Tooltip Özelleştirme */
+    .tippy-box[data-theme~='custom'] { background-color: #333; color: white; font-size: 11px; text-align: center; border: 1px solid #444; }
 </style>
 </head>
 <body class="bg-bg-dark text-white font-display">
@@ -154,7 +155,34 @@
                 lbl: {flora:'VEGETATION', water:'HYDROGRAPHY', wind:'WIND SPEED', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'TRANSPORT NETWORK', build:'ANTHROPOGENIC PRESSURE', elev:'ELEVATION (DEM)', temp:'TEMP'}
             }
         };
-        const INFO = { 'VEJETASYON': 'Flora nektar potansiyeli.', 'HİDROGRAFİ': 'Suya mesafe.', 'RÜZGAR HIZI': 'Rüzgar uygunluğu.', 'BAKI ANALİZİ': 'Güneşlenme.', 'NEM': 'Bağıl nem.', 'EĞİM': 'Arazi eğimi.', 'ULAŞIM AĞI': 'Yola mesafe.', 'ANTROPOJENİK BASKI': 'Yerleşim yoğunluğu.', 'RAKIM (DEM)': 'Yükseklik.', 'SICAKLIK': 'Ortalama sıcaklık.' };
+        
+        // --- TOOLTIP (AÇIKLAMA) METİNLERİ (YENİ) ---
+        const TOOLTIPS = {
+            'TR': {
+                'flora': 'Flora yoğunluğu ve nektar potansiyeli (Land Use analizi).',
+                'water': 'En yakın doğal su kaynağına kuş uçuşu mesafe.',
+                'wind': 'Bölgesel rüzgar hızı ve aerodinamik uygunluk.',
+                'aspect': 'Arazinin güneşe yönelimi. Isı yönetimi için kritik.',
+                'hum': 'Bağıl nem oranı (%40-70 arası idealdir).',
+                'slope': 'Topografik eğim. %15 üzeri risklidir.',
+                'road': 'Ana yollara yakınlık ve lojistik erişim kolaylığı.',
+                'build': 'Yerleşim ve insan baskısı yoğunluğu.',
+                'elev': 'Deniz seviyesinden yükseklik (Rakım).',
+                'temp': 'Ortalama sıcaklık rejimi.'
+            },
+            'EN': {
+                'flora': 'Flora density and nectar potential (Land Use analysis).',
+                'water': 'Euclidean distance to the nearest natural water source.',
+                'wind': 'Regional wind speed and aerodynamic suitability.',
+                'aspect': 'Terrain orientation to sun. Critical for heat management.',
+                'hum': 'Relative humidity (40-70% is ideal).',
+                'slope': 'Topographic slope. Over 15% is risky.',
+                'road': 'Proximity to main roads and logistic access.',
+                'build': 'Settlement density and anthropogenic pressure.',
+                'elev': 'Elevation above sea level (DEM).',
+                'temp': 'Average temperature regime.'
+            }
+        };
         
         let lang = 'TR';
         let sLat, sLng, radius = 2000;
@@ -171,26 +199,13 @@
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
         }
 
-        // --- BUTON VE DİL FONKSİYONU ---
         function setLang(l) {
             lang = l;
-            
-            const btnTr = document.getElementById('btn-tr');
-            const btnEn = document.getElementById('btn-en');
-            
-            // Temel stiller (Tailwind)
+            const btnTr = document.getElementById('btn-tr'); const btnEn = document.getElementById('btn-en');
             const activeStyle = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition";
             const inactiveStyle = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white";
-
-            if (l === 'TR') {
-                btnTr.className = activeStyle;
-                btnEn.className = inactiveStyle;
-            } else {
-                btnEn.className = activeStyle;
-                btnTr.className = inactiveStyle;
-            }
-
-            // Sadece statik metinleri değiştir (ANALİZİ YENİLEME)
+            if (l === 'TR') { btnTr.className = activeStyle; btnEn.className = inactiveStyle; } 
+            else { btnEn.className = activeStyle; btnTr.className = inactiveStyle; }
             document.getElementById('search-input').placeholder = T[lang].ph;
             document.getElementById('btn-analyze-text').innerText = T[lang].btn;
             document.getElementById('lbl-rad').innerText = T[lang].rad;
@@ -267,6 +282,7 @@
         function updateUI() {
             if (!currentData || !currentData.details) return;
             const d = currentData.details; const s = currentData.breakdown; const L = T[lang];
+            const Tooltips = TOOLTIPS[lang]; // DİLE GÖRE TOOLTIP SEÇ
             
             document.getElementById('score-val').innerText = currentData.score;
             document.getElementById('score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
@@ -280,23 +296,25 @@
             const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m";
             const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
             const metrics = [
-                { l: L.lbl.flora, v: d.flora_type, s: s.flora, i: "forest" },
-                { l: L.lbl.water, v: waterText, s: s.water, i: "water_drop" },
-                { l: L.lbl.wind, v: `${d.avg_wind} km/h`, s: s.wind, i: "air" },
-                { l: L.lbl.aspect, v: d.dir_tr, s: s.aspect, i: "wb_sunny" },
-                { l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" },
-                { l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: s.slope, i: "landscape" },
-                { l: L.lbl.road, v: roadText, s: s.road, i: "add_road" },
-                { l: L.lbl.build, v: d.b_count, s: s.build, i: "location_city" },
-                { l: L.lbl.elev, v: d.elevation + "m", s: 100, i: "landscape" },
-                { l: L.lbl.temp, v: d.avg_temp + " °C", s: s.temp, i: "thermostat" }
+                { id: 'flora', l: L.lbl.flora, v: d.flora_type, s: s.flora, i: "forest" },
+                { id: 'water', l: L.lbl.water, v: waterText, s: s.water, i: "water_drop" },
+                { id: 'wind', l: L.lbl.wind, v: `${d.avg_wind} km/h`, s: s.wind, i: "air" },
+                { id: 'aspect', l: L.lbl.aspect, v: d.dir_tr, s: s.aspect, i: "wb_sunny" },
+                { id: 'hum', l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" },
+                { id: 'slope', l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: s.slope, i: "landscape" },
+                { id: 'road', l: L.lbl.road, v: roadText, s: s.road, i: "add_road" },
+                { id: 'build', l: L.lbl.build, v: d.b_count, s: s.build, i: "location_city" },
+                { id: 'elev', l: L.lbl.elev, v: d.elevation + "m", s: 100, i: "landscape" },
+                { id: 'temp', l: L.lbl.temp, v: d.avg_temp + " °C", s: s.temp, i: "thermostat" }
             ];
 
             const grid = document.getElementById('metrics-grid'); grid.innerHTML = '';
             metrics.forEach(m => {
                 const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500");
+                const infoText = Tooltips[m.id] || ""; // ARTIK ID'YE GÖRE ÇEKİYORUZ
                 grid.innerHTML += `
                 <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between relative group hover:border-primary/50 transition">
+                    <span class="material-symbols-outlined absolute top-2 right-2 text-gray-500 text-sm cursor-help hover:text-white transition" data-tippy-content="${infoText}" data-theme="custom">info</span>
                     <div class="flex justify-between items-start mb-2">
                         <div><div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">${m.l}</div>
                         <div class="text-white font-bold text-lg leading-tight truncate w-32 md:w-40">${m.v}</div></div>
@@ -305,6 +323,8 @@
                     <div class="w-full h-1.5 bg-gray-700 mt-2 rounded-full overflow-hidden"><div class="h-full ${barColor}" style="width: ${m.s}%"></div></div>
                 </div>`;
             });
+            // Tippy'yi her güncellemede yeniden başlat ki yeni metinleri görsün
+            tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
         function closeModal(e) { if(e.target.id === 'result-modal') document.getElementById('result-modal').style.display='none'; }
