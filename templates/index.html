@@ -226,21 +226,24 @@
             tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
-        // --- YENİ: ANALİZ SONUCUNU MAİL ATMA FONKSİYONU ---
+     // --- YENİ: ANALİZ SONUCUNU MAİL ATMA (YENİ SEKME + TEMİZ LİNK) ---
         function shareResult() {
             if(!currentData) return;
             const d = currentData.details;
-            const subject = encodeURIComponent(`BeeLocate Analiz Raporu: ${currentData.score} Puan`);
+            // Konu başlığı
+            const subject = `BeeLocate Analiz Raporu: ${currentData.score} Puan`;
             
-            // Mail içeriğini oluştur
-            const bodyText = `
-MERHABA,
+            // Google Maps linkini daha standart ve tıklanabilir hale getirdim
+            const mapsLink = `https://maps.google.com/?q=$?q=${sLat},${sLng}`;
+
+            // Mail içeriği
+            const bodyText = `MERHABA,
 BeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:
 
 📍 KONUM BİLGİSİ
 ---------------------
-Koordinat: ${sLat.toFixed(4)}, ${sLng.toFixed(4)}
-Google Maps: https://maps.google.com/?q=${sLat},${sLng}
+Koordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}
+Haritada Gör: ${mapsLink}
 
 📊 ANALİZ ÖZETİ
 ---------------------
@@ -255,7 +258,11 @@ BeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi
 www.beelocatepro.com
             `;
             
-            window.location.href = `mailto:?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+            // encodeURIComponent kullanarak özel karakterleri link formatına çeviriyoruz
+            const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+            
+            // YENİ SEKMEDE AÇMA KOMUTU ('_blank')
+            window.open(mailtoLink, '_blank');
         }
 
         function handleScroll(el) { if (window.innerWidth >= 768) return; const miniHeader = document.getElementById('sticky-mini-header'); if (el.scrollTop > 150) { miniHeader.classList.remove('opacity-0', 'pointer-events-none'); miniHeader.classList.add('opacity-100', 'pointer-events-auto'); } else { miniHeader.classList.add('opacity-0', 'pointer-events-none'); miniHeader.classList.remove('opacity-100', 'pointer-events-auto'); } }
