@@ -1,11 +1,9 @@
-Beelocatepro stabil versiyon
-
 <!DOCTYPE html>
 <html class="dark" lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v3.9</title>
+<title>BeeLocate PRO v3.9 (Stabil)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -49,7 +47,6 @@ Beelocatepro stabil versiyon
                    data-tippy-content="Bize Ulaşın / Contact Us">
                     <span class="material-symbols-outlined text-xl group-active:scale-90 transition">mail</span>
                 </a>
-
                 <div class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-9 items-center">
                     <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
                     <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
@@ -141,7 +138,7 @@ Beelocatepro stabil versiyon
                             <h3 class="text-xl md:text-2xl font-bold text-white text-center md:text-left" id="lbl-details">Arazi Parametreleri</h3>
                             
                             <div class="flex gap-2 w-full">
-                                <button onclick="downloadReport()" class="flex-1 bg-primary hover:bg-primary-hover text-black px-3 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg transform active:scale-95">
+                                <button onclick="alert('Rapor özelliği şu an bakımda.')" class="flex-1 bg-primary hover:bg-primary-hover text-black px-3 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg transform active:scale-95 opacity-50 cursor-not-allowed">
                                     <span class="material-symbols-outlined">download</span> <span id="btn-dl">Rapor (PDF)</span>
                                 </button>
                                 <button onclick="shareResult()" class="flex-1 bg-primary hover:bg-primary-hover text-black px-3 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg transform active:scale-95">
@@ -233,47 +230,22 @@ Beelocatepro stabil versiyon
             tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
-   function shareResult() {
+        function shareResult() {
             if(!currentData) return;
             const d = currentData.details;
-            
             const subject = `BeeLocate Analiz Raporu: ${currentData.score} Puan`;
-            
-            // DÜZELTİLEN KISIM: Standart Google Maps Link Yapısı
-            // Artık süslü parantez hatası veya yönlendirme sorunu yok.
+            // DÜZELTİLMİŞ HARİTA LİNKİ
             const mapsLink = `https://www.google.com/maps?q=${sLat},${sLng}`;
-
-            const bodyText = `MERHABA,
-BeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:
-
-📍 KONUM BİLGİSİ
----------------------
-Koordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}
-Haritada Gör: ${mapsLink}
-
-📊 ANALİZ ÖZETİ
----------------------
-🏆 Skor: ${currentData.score}/100
-🌲 Flora Tipi: ${d.flora_type}
-💧 Suya Mesafe: ${d.d_water}m
-💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})
-☀️ Bakı: ${d.dir_tr}
-⛰️ Rakım: ${d.elevation}m
-
-BeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi
-www.beelocatepro.com
-            `;
-            
+            const bodyText = `MERHABA,\n\nBeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:\n\n📍 KONUM BİLGİSİ\n---------------------\nKoordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}\nHaritada Gör: ${mapsLink}\n\n📊 ANALİZ ÖZETİ\n---------------------\n🏆 Skor: ${currentData.score}/100\n🌲 Flora Tipi: ${d.flora_type}\n💧 Suya Mesafe: ${d.d_water}m\n💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})\n☀️ Bakı: ${d.dir_tr}\n⛰️ Rakım: ${d.elevation}m\n\nBeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi\nwww.beelocatepro.com`;
             window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`, '_blank');
         }
 
         function handleScroll(el) { if (window.innerWidth >= 768) return; const miniHeader = document.getElementById('sticky-mini-header'); if (el.scrollTop > 150) { miniHeader.classList.remove('opacity-0', 'pointer-events-none'); miniHeader.classList.add('opacity-100', 'pointer-events-auto'); } else { miniHeader.classList.add('opacity-0', 'pointer-events-none'); miniHeader.classList.remove('opacity-100', 'pointer-events-auto'); } }
         function closeModal(e) { if(e.target.id === 'result-modal') document.getElementById('result-modal').style.display='none'; }
         function closeModalBtn() { document.getElementById('result-modal').style.display='none'; }
-        function downloadReport() { window.open(`/download_report?lat=${sLat}&lng=${sLng}&radius=${radius}&lang=${lang}`, '_blank'); }
+        // RAPOR BUTONU ŞİMDİLİK PASİF
+        function downloadReport() { alert("Rapor sunucusu şu an bakımda. Lütfen daha sonra deneyin."); }
         initMap();
-        
-        // STATIC ELEMENTS TOOLTIP INITIALIZATION
         tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
     </script>
 </body>
