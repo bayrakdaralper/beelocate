@@ -85,11 +85,9 @@
 
     <div id="result-modal" class="fixed inset-0 z-40 hidden flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onclick="closeModal(event)">
         <div id="modal-content" class="bg-[#1e1e1e] w-full md:w-full md:max-w-6xl md:rounded-3xl rounded-t-3xl border-t md:border border-white/10 shadow-2xl h-[85vh] md:h-[750px] relative slide-up overflow-hidden" onclick="event.stopPropagation()">
-            
             <button onclick="closeModalBtn()" class="absolute top-4 right-4 z-[70] bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-2 transition shadow-lg backdrop-blur-md">
                 <span class="material-symbols-outlined text-2xl">close</span>
             </button>
-
             <div id="sticky-mini-header" class="absolute top-0 left-0 w-full h-20 bg-[#1e1e1e] border-b border-white/10 z-[60] flex items-center justify-between px-6 opacity-0 pointer-events-none transition-opacity duration-300 rounded-t-3xl">
                 <div class="flex items-center gap-3">
                     <span class="text-3xl font-black text-primary" id="mini-score-val">0</span>
@@ -129,7 +127,6 @@
                     <div class="w-full md:w-2/3 p-4 md:p-8 bg-[#1e1e1e]">
                         <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-3 sticky top-0 md:static z-10 py-2">
                             <h3 class="text-xl md:text-2xl font-bold text-white text-center md:text-left" id="lbl-details">Arazi Parametreleri</h3>
-                            
                             <div class="flex gap-2 w-full">
                                 <button onclick="downloadReport()" class="flex-1 bg-primary hover:bg-primary-hover text-black px-3 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg transform active:scale-95">
                                     <span class="material-symbols-outlined">download</span> <span id="btn-dl">Rapor (PDF)</span>
@@ -138,7 +135,6 @@
                                     <span class="material-symbols-outlined">forward_to_inbox</span> <span id="btn-share">Paylaş (Mail)</span>
                                 </button>
                             </div>
-
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 pb-24" id="metrics-grid"></div>
                     </div>
@@ -149,6 +145,7 @@
 
     <script>
         const T = { 'TR': { ph:'Konum ara...', btn:'ANALİZİ BAŞLAT', load:'CBS Verileri İşleniyor...', logs:['OSM Vektör Verisi...','LULC Analizi...','Hidrografik Ölçüm...','Mikroklima...'], live:'CBS ANALİZİ', score:'UYGUNLUK SKORU', dl:'RAPOR (PDF)', share:'PAYLAŞ (MAIL)', rad:'Tarama Çapı', det:'Arazi Parametreleri', high:'Yüksek Potansiyel', risk:'Kısıtlı Alan', not_found:'Veri Yok', access_err:'Erişim Kısıtlı', lbl: {flora:'VEJETASYON', water:'HİDROGRAFİ', wind:'RÜZGAR HIZI', aspect:'BAKI ANALİZİ', hum:'NEM', slope:'EĞİM', road:'ULAŞIM AĞI', build:'ANTROPOJENİK BASKI', elev:'RAKIM (DEM)', temp:'SICAKLIK'} }, 'EN': { ph:'Search location...', btn:'START ANALYSIS', load:'Processing GIS Data...', logs:['Fetching Vectors...','LULC Analysis...','Hydro Calculation...','Microclimate...'], live:'GIS ANALYSIS', score:'SUITABILITY SCORE', dl:'REPORT (PDF)', share:'SHARE (MAIL)', rad:'Scan Radius', det:'Terrain Parameters', high:'High Potential', risk:'Restricted Area', not_found:'No Data', access_err:'Restricted', lbl: {flora:'VEGETATION', water:'HYDROGRAPHY', wind:'WIND SPEED', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'TRANSPORT NETWORK', build:'ANTHROPOGENIC PRESSURE', elev:'ELEVATION (DEM)', temp:'TEMP'} } };
+        const TOOLTIPS = { 'TR': { 'flora': 'Flora yoğunluğu ve nektar potansiyeli.', 'water': 'En yakın su kaynağına mesafe.', 'wind': 'Bölgesel rüzgar hızı.', 'aspect': 'Güneşlenme durumu.', 'hum': 'Bağıl nem oranı.', 'slope': 'Arazi eğimi.', 'road': 'Yola yakınlık.', 'build': 'Yerleşim yoğunluğu.', 'elev': 'Rakım.', 'temp': 'Ortalama sıcaklık.' }, 'EN': { 'flora': 'Nectar potential.', 'water': 'Distance to water.', 'wind': 'Wind speed.', 'aspect': 'Sun orientation.', 'hum': 'Humidity.', 'slope': 'Terrain slope.', 'road': 'Road access.', 'build': 'Settlement density.', 'elev': 'Elevation.', 'temp': 'Avg temp.' } };
         
         let lang = 'TR'; let sLat, sLng, radius = 2000; let currentData = null; let map, marker, circle, heatLayerGroup; let progressInterval;
 
@@ -165,6 +162,19 @@
             if (l === 'TR') { btnTr.className = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition"; btnEn.className = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white"; } 
             else { btnEn.className = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition"; btnTr.className = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white"; }
             document.getElementById('search-input').placeholder = T[lang].ph; document.getElementById('btn-analyze-text').innerText = T[lang].btn; document.getElementById('lbl-rad').innerText = T[lang].rad;
+        }
+
+        function handleScroll(el) {
+            if (window.innerWidth >= 768) return;
+            const scrollTop = el.scrollTop;
+            const miniHeader = document.getElementById('sticky-mini-header');
+            if (scrollTop > 150) {
+                miniHeader.classList.remove('opacity-0', 'pointer-events-none');
+                miniHeader.classList.add('opacity-100', 'pointer-events-auto');
+            } else {
+                miniHeader.classList.add('opacity-0', 'pointer-events-none');
+                miniHeader.classList.remove('opacity-100', 'pointer-events-auto');
+            }
         }
 
         function updateLocation(lat, lng) {
@@ -222,22 +232,20 @@
             tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
-        // --- DÜZELTİLMİŞ MAİL ATMA ---
         function shareResult() {
             if(!currentData) return;
             const d = currentData.details;
             const subject = `BeeLocate Analiz Raporu: ${currentData.score} Puan`;
-            // Garantili Link
             const mapsLink = `https://www.google.com/maps?q=${sLat},${sLng}`;
             const bodyText = `MERHABA,\n\nBeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:\n\n📍 KONUM BİLGİSİ\n---------------------\nKoordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}\nHaritada Gör: ${mapsLink}\n\n📊 ANALİZ ÖZETİ\n---------------------\n🏆 Skor: ${currentData.score}/100\n🌲 Flora Tipi: ${d.flora_type}\n💧 Suya Mesafe: ${d.d_water}m\n💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})\n☀️ Bakı: ${d.dir_tr}\n⛰️ Rakım: ${d.elevation}m\n\nBeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi\nwww.beelocatepro.com`;
             window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`, '_blank');
         }
 
-        function handleScroll(el) { if (window.innerWidth >= 768) return; const miniHeader = document.getElementById('sticky-mini-header'); if (el.scrollTop > 150) { miniHeader.classList.remove('opacity-0', 'pointer-events-none'); miniHeader.classList.add('opacity-100', 'pointer-events-auto'); } else { miniHeader.classList.add('opacity-0', 'pointer-events-none'); miniHeader.classList.remove('opacity-100', 'pointer-events-auto'); } }
         function closeModal(e) { if(e.target.id === 'result-modal') document.getElementById('result-modal').style.display='none'; }
         function closeModalBtn() { document.getElementById('result-modal').style.display='none'; }
         function downloadReport() { window.open(`/download_report?lat=${sLat}&lng=${sLng}&radius=${radius}&lang=${lang}`, '_blank'); }
         initMap();
+        
         tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
     </script>
 </body>
