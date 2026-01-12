@@ -1,5 +1,13 @@
 Flask
-Flask-Cors
-requests
+Flask-Caching
+osmnx
+geopandas
+shapely
+pandas
 fpdf
+requests
+numpy
+matplotlib
 gunicorn
+scipy
+networkx
