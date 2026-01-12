@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v3.9</title>
+<title>BeeLocate PRO</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -11,7 +11,6 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@popperjs/core@2"></script>
 <script src="https://unpkg.com/tippy.js@6"></script>
-
 <script>
     tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#FFC107", "primary-hover": "#FFB300", "bg-dark": "#212121", "surface": "#1a1a1a" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
 </script>
@@ -41,13 +40,9 @@
                 <h1 class="text-xl font-bold tracking-tight">BeeLocate <span class="text-primary">PRO</span></h1>
             </a>
             <div class="flex items-center gap-2">
-                <a href="mailto:info@beelocatepro.com?subject=BeeLocate%20PRO%20-%20İletişim" 
-                   target="_blank" 
-                   class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300 group" 
-                   data-tippy-content="Bize Ulaşın / Contact Us">
+                <a href="mailto:info@beelocatepro.com?subject=BeeLocate%20PRO%20-%20İletişim" target="_blank" class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300 group" data-tippy-content="Bize Ulaşın / Contact Us">
                     <span class="material-symbols-outlined text-xl group-active:scale-90 transition">mail</span>
                 </a>
-
                 <div class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-9 items-center">
                     <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
                     <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
@@ -62,8 +57,7 @@
         <div class="bg-black/80 backdrop-blur-md p-4 rounded-2xl border border-white/10 w-full animate-fade-in-up space-y-4 shadow-2xl">
             <div class="flex items-center bg-white/10 rounded-xl px-3 h-10 border border-white/5 focus-within:border-primary transition">
                 <span class="material-symbols-outlined text-gray-400 text-lg">search</span>
-                <input id="search-input" class="bg-transparent border-none text-white text-sm w-full ml-2 focus:outline-none placeholder-gray-500" 
-                       placeholder="Konum ara... (Örn: Sarıcakaya)" onkeypress="handleSearch(event)">
+                <input id="search-input" class="bg-transparent border-none text-white text-sm w-full ml-2 focus:outline-none placeholder-gray-500" placeholder="Konum ara... (Örn: Sarıcakaya)" onkeypress="handleSearch(event)">
             </div>
             <div>
                 <div class="flex justify-between text-[10px] text-gray-400 mb-2 font-bold uppercase tracking-wider">
@@ -87,7 +81,6 @@
             <div id="log-container" class="flex flex-col items-center gap-2 text-sm text-gray-400 font-mono transition-all duration-300"></div>
             <div class="absolute bottom-0 w-full h-10 bg-gradient-to-t from-bg-dark to-transparent"></div>
         </div>
-        <p class="text-xs text-gray-500 mt-8 absolute bottom-10 px-4">Sunucu "Cold Start" modunda olabilir. İlk işlem 40-50sn sürebilir.</p>
     </div>
 
     <div id="result-modal" class="fixed inset-0 z-40 hidden flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onclick="closeModal(event)">
@@ -130,7 +123,6 @@
                             <div class="mt-6 p-4 bg-black/20 rounded-xl border-l-2 border-primary text-center md:text-left">
                                 <p class="text-sm text-gray-300 leading-relaxed" id="dynamic-text">...</p>
                             </div>
-                            <div class="hidden md:block mt-auto pt-6 opacity-30 text-[10px] uppercase tracking-widest text-center">BeeLocate - GIS Decision Support System</div>
                         </div>
                     </div>
 
@@ -157,7 +149,6 @@
 
     <script>
         const T = { 'TR': { ph:'Konum ara...', btn:'ANALİZİ BAŞLAT', load:'CBS Verileri İşleniyor...', logs:['OSM Vektör Verisi...','LULC Analizi...','Hidrografik Ölçüm...','Mikroklima...'], live:'CBS ANALİZİ', score:'UYGUNLUK SKORU', dl:'RAPOR (PDF)', share:'PAYLAŞ (MAIL)', rad:'Tarama Çapı', det:'Arazi Parametreleri', high:'Yüksek Potansiyel', risk:'Kısıtlı Alan', not_found:'Veri Yok', access_err:'Erişim Kısıtlı', lbl: {flora:'VEJETASYON', water:'HİDROGRAFİ', wind:'RÜZGAR HIZI', aspect:'BAKI ANALİZİ', hum:'NEM', slope:'EĞİM', road:'ULAŞIM AĞI', build:'ANTROPOJENİK BASKI', elev:'RAKIM (DEM)', temp:'SICAKLIK'} }, 'EN': { ph:'Search location...', btn:'START ANALYSIS', load:'Processing GIS Data...', logs:['Fetching Vectors...','LULC Analysis...','Hydro Calculation...','Microclimate...'], live:'GIS ANALYSIS', score:'SUITABILITY SCORE', dl:'REPORT (PDF)', share:'SHARE (MAIL)', rad:'Scan Radius', det:'Terrain Parameters', high:'High Potential', risk:'Restricted Area', not_found:'No Data', access_err:'Restricted', lbl: {flora:'VEGETATION', water:'HYDROGRAPHY', wind:'WIND SPEED', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'TRANSPORT NETWORK', build:'ANTHROPOGENIC PRESSURE', elev:'ELEVATION (DEM)', temp:'TEMP'} } };
-        const TOOLTIPS = { 'TR': { 'flora': 'Flora yoğunluğu ve nektar potansiyeli.', 'water': 'En yakın su kaynağına mesafe.', 'wind': 'Bölgesel rüzgar hızı.', 'aspect': 'Güneşlenme durumu.', 'hum': 'Bağıl nem oranı.', 'slope': 'Arazi eğimi.', 'road': 'Yola yakınlık.', 'build': 'Yerleşim yoğunluğu.', 'elev': 'Rakım.', 'temp': 'Ortalama sıcaklık.' }, 'EN': { 'flora': 'Nectar potential.', 'water': 'Distance to water.', 'wind': 'Wind speed.', 'aspect': 'Sun orientation.', 'hum': 'Humidity.', 'slope': 'Terrain slope.', 'road': 'Road access.', 'build': 'Settlement density.', 'elev': 'Elevation.', 'temp': 'Avg temp.' } };
         
         let lang = 'TR'; let sLat, sLng, radius = 2000; let currentData = null; let map, marker, circle, heatLayerGroup; let progressInterval;
 
@@ -231,37 +222,14 @@
             tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
-     function shareResult() {
+        // --- DÜZELTİLMİŞ MAİL ATMA ---
+        function shareResult() {
             if(!currentData) return;
             const d = currentData.details;
-            
             const subject = `BeeLocate Analiz Raporu: ${currentData.score} Puan`;
-            
-            // DÜZELTİLEN KISIM: Standart Google Maps Link Yapısı
-            // Artık süslü parantez hatası veya yönlendirme sorunu yok.
+            // Garantili Link
             const mapsLink = `https://www.google.com/maps?q=${sLat},${sLng}`;
-
-            const bodyText = `MERHABA,
-BeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:
-
-📍 KONUM BİLGİSİ
----------------------
-Koordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}
-Haritada Gör: ${mapsLink}
-
-📊 ANALİZ ÖZETİ
----------------------
-🏆 Skor: ${currentData.score}/100
-🌲 Flora Tipi: ${d.flora_type}
-💧 Suya Mesafe: ${d.d_water}m
-💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})
-☀️ Bakı: ${d.dir_tr}
-⛰️ Rakım: ${d.elevation}m
-
-BeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi
-www.beelocatepro.com
-            `;
-            
+            const bodyText = `MERHABA,\n\nBeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:\n\n📍 KONUM BİLGİSİ\n---------------------\nKoordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}\nHaritada Gör: ${mapsLink}\n\n📊 ANALİZ ÖZETİ\n---------------------\n🏆 Skor: ${currentData.score}/100\n🌲 Flora Tipi: ${d.flora_type}\n💧 Suya Mesafe: ${d.d_water}m\n💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})\n☀️ Bakı: ${d.dir_tr}\n⛰️ Rakım: ${d.elevation}m\n\nBeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi\nwww.beelocatepro.com`;
             window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`, '_blank');
         }
 
@@ -270,8 +238,6 @@ www.beelocatepro.com
         function closeModalBtn() { document.getElementById('result-modal').style.display='none'; }
         function downloadReport() { window.open(`/download_report?lat=${sLat}&lng=${sLng}&radius=${radius}&lang=${lang}`, '_blank'); }
         initMap();
-        
-        // STATIC ELEMENTS TOOLTIP INITIALIZATION
         tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
     </script>
 </body>
