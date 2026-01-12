@@ -16,9 +16,7 @@
     tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#FFC107", "primary-hover": "#FFB300", "bg-dark": "#212121", "surface": "#1a1a1a" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
 </script>
 <style>
-    /* Mobilde adres çubuğu sorununu çözmek için fixed positioning */
     #map { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
-    
     .radar-spinner { width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, rgba(255, 193, 7, 0.5) 100%); animation: radar-spin 1.5s linear infinite; position: relative; }
     .radar-spinner::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: #212121; }
     @keyframes radar-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -28,16 +26,19 @@
     input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #444; border-radius: 2px; }
     .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    /* Bottom Sheet Animasyonu */
+    .slide-up { animation: slideUp 0.3s ease-out forwards; }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 </style>
 </head>
 <body class="bg-bg-dark text-white font-display overflow-hidden">
 
     <div class="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 md:w-[600px] z-20 flex flex-col gap-3 pointer-events-none">
         <div class="flex justify-between items-center px-2 pointer-events-auto">
-            <div class="flex items-center gap-2 drop-shadow-md bg-black/60 px-4 py-2 rounded-full backdrop-blur cursor-pointer border border-white/10" onclick="window.location.href='/'">
-                <span class="material-symbols-outlined text-primary text-3xl">hive</span>
+            <a href="/" class="flex items-center gap-2 drop-shadow-md bg-black/60 px-4 py-2 rounded-full backdrop-blur cursor-pointer border border-white/10 hover:bg-black/80 transition group">
+                <span class="material-symbols-outlined text-primary text-3xl group-hover:scale-110 transition">hive</span>
                 <h1 class="text-xl font-bold tracking-tight">BeeLocate <span class="text-primary">PRO</span></h1>
-            </div>
+            </a>
             <div class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg">
                 <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
                 <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition">EN</button>
@@ -69,53 +70,55 @@
     </div>
 
     <div id="loading-screen" class="fixed inset-0 bg-bg-dark/95 z-50 hidden flex-col items-center justify-center text-center">
-        <div class="radar-spinner mb-8"></div>
-        <h2 class="text-2xl font-bold mb-4" id="loading-title">Saha Taranıyor...</h2>
-        <div class="w-80 h-40 overflow-hidden relative">
+        <div class="radar-spinner mb-4"></div>
+        <div class="text-4xl font-black text-primary mb-2" id="loading-percent">0%</div>
+        <h2 class="text-xl font-bold mb-4 text-white" id="loading-title">Saha Taranıyor...</h2>
+        <div class="w-80 h-24 overflow-hidden relative">
             <div id="log-container" class="flex flex-col items-center gap-2 text-sm text-gray-400 font-mono transition-all duration-300"></div>
             <div class="absolute bottom-0 w-full h-10 bg-gradient-to-t from-bg-dark to-transparent"></div>
         </div>
     </div>
 
-    <div id="result-modal" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onclick="closeModal(event)">
-        <button onclick="closeModalBtn()" class="absolute top-6 right-6 z-50 bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-3 transition shadow-lg backdrop-blur-md">
-            <span class="material-symbols-outlined text-3xl">close</span>
-        </button>
-
-        <div class="bg-[#1e1e1e] w-full max-w-6xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[750px] relative" onclick="event.stopPropagation()">
+    <div id="result-modal" class="fixed inset-0 z-40 hidden flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onclick="closeModal(event)">
+        
+        <div class="bg-[#1e1e1e] w-full md:w-full md:max-w-6xl md:rounded-3xl rounded-t-3xl border-t md:border border-white/10 shadow-2xl flex flex-col md:flex-row h-[85vh] md:h-[750px] relative slide-up overflow-hidden" onclick="event.stopPropagation()">
             
-            <div class="w-full md:w-1/3 bg-[#252525] p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative overflow-y-auto">
-                <div>
-                    <div class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-6">
-                        <span class="size-2 rounded-full bg-green-500 animate-pulse"></span>
-                        <span class="text-xs font-bold text-gray-300" id="lbl-live">CANLI ANALİZ</span>
+            <button onclick="closeModalBtn()" class="absolute top-4 right-4 z-50 bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-2 transition shadow-lg backdrop-blur-md">
+                <span class="material-symbols-outlined text-2xl">close</span>
+            </button>
+
+            <div class="w-full md:w-1/3 bg-[#252525] flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative shrink-0">
+                <div class="p-6 md:p-8 flex flex-col h-full">
+                    <div class="text-center md:text-left">
+                        <div class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-4">
+                            <span class="size-2 rounded-full bg-green-500 animate-pulse"></span>
+                            <span class="text-xs font-bold text-gray-300" id="lbl-live">CANLI ANALİZ</span>
+                        </div>
+                        <div class="text-gray-400 text-sm font-bold uppercase tracking-widest mb-1" id="lbl-score">GENEL SKOR</div>
+                        <div class="flex items-baseline justify-center md:justify-start gap-2">
+                            <span class="text-7xl md:text-8xl font-black text-primary" id="score-val">0</span>
+                            <span class="text-xl md:text-2xl text-gray-500 font-bold">/100</span>
+                        </div>
+                        <div class="mt-2 text-green-400 font-bold text-lg md:text-xl flex items-center justify-center md:justify-start gap-2">
+                            <span class="material-symbols-outlined">trending_up</span>
+                            <span id="score-comment">--</span>
+                        </div>
                     </div>
-                    <div class="text-gray-400 text-sm font-bold uppercase tracking-widest mb-2" id="lbl-score">GENEL SKOR</div>
-                    <div class="flex items-baseline gap-2">
-                        <span class="text-8xl font-black text-primary" id="score-val">0</span>
-                        <span class="text-2xl text-gray-500 font-bold">/100</span>
+                    <div class="mt-6 p-4 bg-black/20 rounded-xl border-l-2 border-primary text-center md:text-left">
+                        <p class="text-sm text-gray-300 leading-relaxed" id="dynamic-text">...</p>
                     </div>
-                    <div class="mt-4 text-green-400 font-bold text-xl flex items-center gap-2">
-                        <span class="material-symbols-outlined">trending_up</span>
-                        <span id="score-comment">--</span>
-                    </div>
+                    <div class="hidden md:block mt-auto pt-6 opacity-30 text-[10px] uppercase tracking-widest text-center">AI Powered Feasibility Engine</div>
                 </div>
-                
-                <div class="mt-6 p-4 bg-black/20 rounded-xl border-l-2 border-primary">
-                    <p class="text-sm text-gray-300 leading-relaxed" id="dynamic-text">...</p>
-                </div>
-                
-                <div class="mt-auto pt-6 opacity-30 text-[10px] uppercase tracking-widest text-center">AI Powered Feasibility Engine</div>
             </div>
 
-            <div class="w-full md:w-2/3 p-6 md:p-8 relative overflow-y-auto no-scrollbar bg-[#1e1e1e]">
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                    <h3 class="text-2xl font-bold text-white" id="lbl-details">Detaylı Saha Karnesi</h3>
+            <div class="w-full md:w-2/3 p-4 md:p-8 relative overflow-y-auto no-scrollbar bg-[#1e1e1e]">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 sticky top-0 bg-[#1e1e1e] z-10 py-2">
+                    <h3 class="text-xl md:text-2xl font-bold text-white text-center md:text-left" id="lbl-details">Detaylı Saha Karnesi</h3>
                     <button onclick="downloadReport()" class="bg-primary hover:bg-primary-hover text-black px-6 py-3 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-lg w-full md:w-auto justify-center">
                         <span class="material-symbols-outlined">download</span> <span id="btn-dl">Raporu İndir</span>
                     </button>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-12" id="metrics-grid"></div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 pb-12" id="metrics-grid"></div>
             </div>
         </div>
     </div>
@@ -124,38 +127,43 @@
         const T = {
             'TR': { 
                 ph:'Şehir veya bölge ara... (Enter)', btn:'KONUMU ANALİZ ET', load:'Saha Taranıyor...', 
-                logs:['Harita Verisi İndiriliyor...','Uydu Görüntüsü İşleniyor...','Su Kaynakları Hesaplanıyor...','Rapor Oluşturuluyor...'], 
+                logs:['Uydu Verisi İndiriliyor...','Görüntü İşleniyor...','Kriterler Hesaplanıyor...','Rapor Oluşturuluyor...'], 
                 live:'CANLI ANALİZ', score:'GENEL SKOR', dl:'PDF İNDİR', rad:'Tarama Çapı', det:'Detaylı Saha Karnesi', 
                 high:'Yüksek Potansiyel', risk:'Orta/Riskli', not_found:'Tespit Edilemedi', access_err:'Erişim Zor / Yok',
-                dirs: {"N": "Kuzey", "NE": "Kuzeydoğu", "E": "Doğu", "SE": "Güneydoğu", "S": "Güney", "SW": "Güneybatı", "W": "Batı", "NW": "Kuzeybatı"},
-                lbl: {flora:'FLORA', water:'SU KAYNAĞI', wind:'RÜZGAR', aspect:'BAKI (YÖN)', hum:'NEM', slope:'EĞİM', road:'ULAŞIM', build:'YERLEŞİM', elev:'RAKIM', temp:'SICAKLIK'},
-                summary: "Bölgede <b>{flora}</b> hakimiyeti görülmüştür. Hakim rüzgar <b>{wind}</b> yönündedir. Su kaynağı {water}."
+                lbl: {flora:'FLORA', water:'SU KAYNAĞI', wind:'RÜZGAR', aspect:'BAKI (YÖN)', hum:'NEM', slope:'EĞİM', road:'ULAŞIM', build:'YERLEŞİM', elev:'RAKIM', temp:'SICAKLIK'}
             },
             'EN': { 
                 ph:'Search location... (Enter)', btn:'ANALYZE LOCATION', load:'Scanning Field...', 
-                logs:['Downloading Map Data...','Processing Satellite Data...','Calculating Water Sources...','Generating Report...'], 
+                logs:['Downloading Satellite Data...','Processing Image...','Calculating Metrics...','Generating Report...'], 
                 live:'LIVE ANALYSIS', score:'OVERALL SCORE', dl:'DOWNLOAD PDF', rad:'Scan Radius', det:'Detailed Field Report', 
                 high:'High Potential', risk:'Medium/Risky', not_found:'Not Detected', access_err:'Hard Access / Far',
-                dirs: {"N": "North", "NE": "Northeast", "E": "East", "SE": "Southeast", "S": "South", "SW": "Southwest", "W": "West", "NW": "Northwest"},
-                lbl: {flora:'FLORA', water:'WATER', wind:'WIND', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'ACCESS', build:'BUILDINGS', elev:'ELEVATION', temp:'TEMP'},
-                summary: "Area dominated by <b>{flora}</b>. Prevailing wind is <b>{wind}</b>. Water source is {water}."
+                lbl: {flora:'FLORA', water:'WATER', wind:'WIND', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'ACCESS', build:'BUILDINGS', elev:'ELEVATION', temp:'TEMP'}
             }
+        };
+        
+        // KART AÇIKLAMALARI (TOOLTIPS)
+        const INFO = {
+            'FLORA': 'Arıların bal yapması için gerekli nektar ve polen kaynaklarının (orman, mera, tarım) yoğunluğu.',
+            'SU KAYNAĞI': 'Kovan serinletme ve beslenme için suya mesafe. 2-3km üstü verim düşüklüğü yaratabilir.',
+            'RÜZGAR': 'Hakim rüzgar yönü ve şiddeti. 20km/s üstü rüzgar arının uçuşunu ve eve dönüşünü zorlaştırır.',
+            'BAKI (YÖN)': 'Arazinin güneşe bakan yönü. Güney/Doğu yamaçlar sabah güneşi alır, kovanlar erken ısınır.',
+            'NEM': 'Bölgedeki bağıl nem oranı. Çok yüksek nem hastalık riskini artırır, çok düşük nem nektarı kurutur.',
+            'EĞİM': 'Arazinin dikliği. Çok dik arazilerde çalışmak zordur ve kovan devrilme riski vardır.',
+            'ULAŞIM': 'Ana yollara ve tali yollara mesafe. Çok yakınsa araç gürültüsü stresi, çok uzaksa lojistik maliyet.',
+            'YERLEŞİM': 'Şehirleşme ve bina yoğunluğu. Binalar ve ışık kirliliği arılar için stres faktörüdür.',
+            'RAKIM': 'Deniz seviyesinden yükseklik. Çiçeklenme zamanını ve kışlama koşullarını etkiler.',
+            'SICAKLIK': 'Ortalama hava sıcaklığı. Arılar için ideal çalışma aralığı 15-30 derecedir.'
         };
         
         let lang = 'TR';
         let sLat, sLng, radius = 2000;
         let currentData = null; 
         let map, marker, circle, heatLayerGroup;
+        let progressInterval;
 
         function initMap() {
-            // zoomControl: false -> Mobilde daha temiz görünüm için
             map = L.map('map', { zoomControl: false }).setView([39.7766, 30.5206], 13);
-            
-            // DÜZELTME: HTTP -> HTTPS (Güvenli Bağlantı)
             var sat = L.tileLayer('https://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', {attribution:'Google'});
-            // Alternatif (Eğer Google çalışmazsa): 
-            // var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {attribution: 'Esri'});
-            
             sat.addTo(map);
             L.control.zoom({position:'bottomright'}).addTo(map);
             heatLayerGroup = L.layerGroup().addTo(map);
@@ -168,14 +176,12 @@
             sLat = lat; sLng = lng;
             marker = L.marker([lat, lng]).addTo(map);
             updateCircle();
-            // Mobilde klavye açılınca ekran kaymasın diye focus yapmıyoruz
         }
 
         async function handleSearch(e) {
             if (e.key === 'Enter') {
                 const query = document.getElementById('search-input').value;
                 if (!query) return;
-                // Klavye kapansın diye inputtan çık
                 document.getElementById('search-input').blur();
                 try {
                     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
@@ -201,36 +207,59 @@
             if(sLat) circle = L.circle([sLat, sLng], {color:'#FFC107', fillColor:'#FFC107', fillOpacity:0.1, radius: radius}).addTo(map);
         }
 
+        function startProgress() {
+            let percent = 0;
+            const el = document.getElementById('loading-percent');
+            const logBox = document.getElementById('log-container');
+            logBox.innerHTML = '';
+            const logs = T[lang].logs;
+            let logIndex = 0;
+            
+            progressInterval = setInterval(() => {
+                let increment = 0;
+                if(percent < 30) increment = Math.random() * 5;
+                else if(percent < 70) increment = Math.random() * 2;
+                else if(percent < 95) increment = Math.random() * 0.5;
+                
+                percent += increment;
+                if(percent > 99) percent = 99;
+                
+                el.innerText = Math.floor(percent) + "%";
+                
+                if (percent > (logIndex + 1) * 25 && logIndex < logs.length) {
+                    let p = document.createElement('p'); 
+                    p.innerText = logs[logIndex]; 
+                    p.style.color = '#4ade80';
+                    logBox.prepend(p);
+                    logIndex++;
+                }
+            }, 100);
+        }
+
+        function stopProgress() {
+            clearInterval(progressInterval);
+            document.getElementById('loading-percent').innerText = "100%";
+        }
+
         async function runSmartAnalysis() {
             if(!sLat || !sLng) { alert("Lütfen haritadan bir yer seçin."); return; }
             document.getElementById('loading-screen').style.display = 'flex';
-            
-            const aniProm = new Promise(async (resolve) => {
-                const logs = T[lang].logs;
-                const box = document.getElementById('log-container'); box.innerHTML = '';
-                for (let i=0; i<logs.length; i++) {
-                    await new Promise(r => setTimeout(r, 800));
-                    let p = document.createElement('p'); p.innerText = logs[i]; p.style.color = '#4ade80';
-                    box.prepend(p);
-                }
-                resolve();
-            });
-
-            const fetchProm = fetch('/analyze', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ lat: sLat, lng: sLng, radius: radius, lang: lang })
-            }).then(r => r.json());
-
+            startProgress();
             try {
-                const [_, data] = await Promise.all([aniProm, fetchProm]);
+                const res = await fetch('/analyze', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ lat: sLat, lng: sLng, radius: radius, lang: lang })
+                });
+                const data = await res.json();
+                stopProgress();
+                await new Promise(r => setTimeout(r, 500));
                 document.getElementById('loading-screen').style.display = 'none';
                 if (data.error) { alert("Analiz Hatası: " + data.error); return; }
-                
                 currentData = data;
                 document.getElementById('result-modal').style.display = 'flex';
                 updateUI();
                 drawHeatmap(data.heatmap);
-            } catch (e) { alert("Bağlantı Hatası: " + e); document.getElementById('loading-screen').style.display = 'none'; }
+            } catch (e) { stopProgress(); alert("Bağlantı Hatası: " + e); document.getElementById('loading-screen').style.display = 'none'; }
         }
 
         function drawHeatmap(points) {
@@ -247,24 +276,16 @@
 
             document.getElementById('score-val').innerText = currentData.score;
             document.getElementById('score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
-            
-            const windDirTxt = L.dirs[d.wind_dir] || d.wind_dir;
-            const aspectDirTxt = d.dir_tr; 
-            
+            document.getElementById('dynamic-text').innerHTML = currentData.ai_text;
+
             const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m";
             const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
-            const waterMsg = d.d_water >= 5000 ? (lang==='TR'?"tespit edilememiştir":"not detected") : (lang==='TR'?`mesafe <b>${d.d_water}m</b>`:`distance <b>${d.d_water}m</b>`);
-
-            document.getElementById('dynamic-text').innerHTML = L.summary
-                .replace('{flora}', d.flora_type)
-                .replace('{wind}', windDirTxt)
-                .replace('{water}', waterMsg);
 
             const metrics = [
                 { l: L.lbl.flora, v: d.flora_type, s: s.flora, i: "forest" },
                 { l: L.lbl.water, v: waterText, s: s.water, i: "water_drop" },
-                { l: L.lbl.wind, v: `${d.avg_wind} km/h (${windDirTxt})`, s: s.wind, i: "air" },
-                { l: L.lbl.aspect, v: aspectDirTxt, s: s.aspect, i: "wb_sunny" },
+                { l: L.lbl.wind, v: `${d.avg_wind} km/h`, s: s.wind, i: "air" },
+                { l: L.lbl.aspect, v: d.dir_tr, s: s.aspect, i: "wb_sunny" },
                 { l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" },
                 { l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: s.slope, i: "landscape" },
                 { l: L.lbl.road, v: roadText, s: s.road, i: "add_road" },
@@ -277,12 +298,15 @@
             grid.innerHTML = '';
             metrics.forEach(m => {
                 const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500");
+                const infoText = INFO[m.l] || "Önemli kriter.";
+                
                 grid.innerHTML += `
-                <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between">
+                <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between relative group hover:border-primary/50 transition">
+                    <span class="material-symbols-outlined absolute top-2 right-2 text-gray-500 text-sm cursor-help hover:text-white transition" data-tippy-content="${infoText}">info</span>
                     <div class="flex justify-between items-start mb-2">
                         <div>
-                            <div class="text-[10px] text-gray-400 font-bold uppercase mb-1">${m.l}</div>
-                            <div class="text-white font-bold text-lg truncate w-32">${m.v}</div>
+                            <div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">${m.l}</div>
+                            <div class="text-white font-bold text-lg leading-tight truncate w-32 md:w-40" title="${m.v}">${m.v}</div>
                         </div>
                         <span class="material-symbols-outlined text-gray-600 text-2xl">${m.i}</span>
                     </div>
@@ -291,26 +315,12 @@
                     </div>
                 </div>`;
             });
+            
+            // Tooltip'leri etkinleştir
+            tippy('[data-tippy-content]');
         }
 
-        function setLang(l) { 
-            lang = l; 
-            const L = T[l];
-            document.getElementById('btn-analyze-text').innerText = L.btn;
-            document.getElementById('loading-title').innerText = L.load;
-            document.getElementById('lbl-live').innerText = L.live;
-            document.getElementById('lbl-score').innerText = L.score;
-            document.getElementById('btn-dl').innerText = L.dl;
-            document.getElementById('lbl-rad').innerText = L.rad;
-            document.getElementById('lbl-details').innerText = L.det;
-            document.getElementById('search-input').placeholder = L.ph;
-            
-            document.getElementById('btn-tr').className = l==='TR' ? "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition" : "px-3 py-1 rounded-full text-xs font-bold text-gray-400 hover:text-white transition";
-            document.getElementById('btn-en').className = l==='EN' ? "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition" : "px-3 py-1 rounded-full text-xs font-bold text-gray-400 hover:text-white transition";
-            
-            if(currentData) runSmartAnalysis(); 
-        }
-        
+        function setLang(l) { lang = l; if(currentData) runSmartAnalysis(); }
         function closeModal(e) { if(e.target.id === 'result-modal') document.getElementById('result-modal').style.display='none'; }
         function closeModalBtn() { document.getElementById('result-modal').style.display='none'; }
         function downloadReport() { window.open(`/download_report?lat=${sLat}&lng=${sLng}&radius=${radius}&lang=${lang}`, '_blank'); }
