@@ -5,3 +5,4 @@ fpdf
 matplotlib
 numpy
 gunicorn
+Flask-Caching
