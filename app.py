@@ -18,10 +18,9 @@ import tempfile
 import os
 
 app = Flask(__name__)
-# Basit Cache (Hız için)
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 600})
 
-# --- DİL VE METİN AYARLARI (GÜNCELLENDİ) ---
+# --- DİL AYARLARI ---
 TRANS = {
     'TR': {
         'title': 'ARICILIK SAHA ANALIZ RAPORU', 'score': 'SKOR', 
@@ -31,12 +30,9 @@ TRANS = {
         'wind': 'Hakim Ruzgar', 'aspect': 'Arazi Bakisi', 'temp': 'Ort. Sicaklik',
         'elev': 'Rakim', 'settle': 'Yerlesim', 'access': 'Ulasim',
         'not_found': 'Veri Yok', 'access_err': 'Erisim Zor / Uzak',
-        
-        # YENİ SU METİNLERİ
         'w_good': "Su kaynaklarina erisim ideal seviyededir",
         'w_bad': "Su kaynagi uzaktir, tasima su gerekebilir",
         'w_crit': "KRITIK: Dogal su kaynagi erisim disindadir (>5km). Su takviyesi zorunludur.",
-        
         'wi_warn': "DIKKAT: Ruzgar hizi ({spd} km/h) yuksektir",
         'std_summary': "Bölgede <b>{flora}</b> hakimiyeti görülmüştür. Hakim rüzgar <b>{wind}</b> yönündedir. {water_txt}. {wind_txt}",
         'err_summary': "Bölgede baskın bitki örtüsü uydu verileriyle ayırt edilememiştir. Ancak yapılaşma düşüktür. Hakim rüzgar <b>{wind}</b> yönündedir. {water_txt}.",
@@ -50,11 +46,9 @@ TRANS = {
         'wind': 'Prevailing Wind', 'aspect': 'Aspect', 'temp': 'Avg. Temp',
         'elev': 'Elevation', 'settle': 'Settlement', 'access': 'Access',
         'not_found': 'Not Detected', 'access_err': 'Hard Access / Far',
-        
         'w_good': "Access to water sources is ideal",
         'w_bad': "Water source is distant",
         'w_crit': "CRITICAL: Natural water source out of range (>5km). Supplement required.",
-        
         'wi_warn': "WARNING: Wind speed ({spd} km/h) is high",
         'std_summary': "Area dominated by <b>{flora}</b>. Prevailing wind is <b>{wind}</b>. {water_txt}. {wind_txt}",
         'err_summary': "Dominant vegetation could not be distinguished. However, urbanization is low. Prevailing wind is <b>{wind}</b>. {water_txt}.",
@@ -147,18 +141,28 @@ def calculate_score(lat, lng, radius=2000, lang="TR"):
     meteo = get_meteo_extended(lat, lng)
     slope_pct, slope_deg, aspect_dir, elevation = get_terrain_pro(lat, lng)
 
-    d_flora = 9999; flora_name = "Bilinmiyor" if lang=="TR" else "Unknown"
+    # --- FLORA İSİMLENDİRME (DİL DESTEKLİ) ---
+    flora_map = {
+        'TR': {'wood':'Orman', 'forest':'Orman', 'meadow':'Mera', 'grass':'Mera', 'farm':'Tarim', 'scrub':'Calilik', 'unknown':'Bilinmiyor'},
+        'EN': {'wood':'Forest', 'forest':'Forest', 'meadow':'Meadow', 'grass':'Grassland', 'farm':'Agriculture', 'scrub':'Scrubland', 'unknown':'Unknown'}
+    }
+    L_FLORA = flora_map.get(lang, flora_map['TR'])
+
+    d_flora = 9999; flora_key = "unknown"
     if not f.empty:
         d_flora = f.distance(p).min()*111000
         near = f.iloc[f.distance(p).argmin()]
         ts = str(near.get('natural',''))+str(near.get('landuse',''))
-        if "wood" in ts or "forest" in ts: flora_name = "Orman"
-        elif "meadow" in ts or "grass" in ts: flora_name = "Mera"
-        elif "farm" in ts: flora_name = "Tarim"
-        else: flora_name = "Calilik"
+        if "wood" in ts or "forest" in ts: flora_key = "wood"
+        elif "meadow" in ts or "grass" in ts: flora_key = "meadow"
+        elif "farm" in ts: flora_key = "farm"
+        else: flora_key = "scrub"
     
+    flora_name = L_FLORA.get(flora_key, L_FLORA['unknown'])
+    
+    # Puanlama
     s_f = 100 if d_flora < 100 else max(0, 100-(d_flora/2000)*100)
-    if "Tarim" in flora_name: s_f *= 0.7
+    if flora_key == "farm": s_f *= 0.7
     
     asp_sc = {'S':100,'SE':100,'SW':90,'E':80,'W':50,'NE':30,'NW':20,'N':10}
     s_a = asp_sc.get(aspect_dir, 50)
@@ -186,7 +190,6 @@ def calculate_score(lat, lng, radius=2000, lang="TR"):
     except: pass
     return res
 
-# --- RAPOR OLUŞTURUCU SINIFI ---
 class PremiumReport(FPDF):
     def __init__(self, lang='TR'): super().__init__(); self.L = TRANS[lang]
     def header(self):
@@ -216,14 +219,9 @@ def analyze():
         score, subs, dets = calculate_score(lat, lng, rad, lang)
         L = TRANS[lang]
         
-        # --- SU DURUMU MANTIĞI (GÜNCELLENDİ) ---
-        if dets['d_water'] < 2000:
-            water_msg = L['w_good'] + f" ({dets['d_water']}m)"
-        elif dets['d_water'] < 5000:
-            water_msg = L['w_bad'] + f" ({dets['d_water']}m)"
-        else:
-            # 5km'den uzaksa artık "Tespit Edilemedi" DEĞİL, "Kritik Uyarı" yazıyor.
-            water_msg = L['w_crit']
+        if dets['d_water'] < 2000: water_msg = L['w_good'] + f" ({dets['d_water']}m)"
+        elif dets['d_water'] < 5000: water_msg = L['w_bad'] + f" ({dets['d_water']}m)"
+        else: water_msg = L['w_crit']
 
         wind_txt = L['wi_warn'].format(spd=dets['avg_wind']) if dets['avg_wind'] > 20 else ""
         
@@ -262,13 +260,9 @@ def download_report():
 
         pdf.chapter_title(L['ch_1']); pdf.set_font('Arial','',10)
         
-        # --- PDF İÇİN SU MANTIĞI (SENKRONİZE EDİLDİ) ---
-        if d['d_water'] < 2000:
-            water_txt = L['w_good'] + f" ({d['d_water']}m)"
-        elif d['d_water'] < 5000:
-            water_txt = L['w_bad'] + f" ({d['d_water']}m)"
-        else:
-            water_txt = L['w_crit'] # PDF'te de artık düzgün yazacak
+        if d['d_water'] < 2000: water_txt = L['w_good'] + f" ({d['d_water']}m)"
+        elif d['d_water'] < 5000: water_txt = L['w_bad'] + f" ({d['d_water']}m)"
+        else: water_txt = L['w_crit']
 
         wind_txt = L['wi_warn'].format(spd=d['avg_wind']) if d['avg_wind'] > 20 else ""
         
@@ -280,8 +274,6 @@ def download_report():
         pdf.multi_cell(0,6,tr_chars(summary)); pdf.ln(10)
 
         pdf.chapter_title(L['ch_2'])
-        
-        # Tablodaki kısa su bilgisi
         w_res = f"{d['d_water']}m" if d['d_water'] < 5000 else tr_chars(">5km (Yetersiz)")
         
         pdf.info_row(L['loc'], f"{lat:.4f}, {lng:.4f}"); pdf.info_row(L['flora'], d['flora_type'])
