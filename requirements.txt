@@ -1,11 +1,7 @@
-Flask
-Flask-Caching
-osmnx
-geopandas
-shapely
-pandas
-fpdf
+flask
+flask-cors
 requests
-numpy
+fpdf
 matplotlib
+numpy
 gunicorn
