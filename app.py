@@ -1,30 +1,30 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
-import math
 import requests
 import logging
 import os
 import random
 from fpdf import FPDF
 import matplotlib
-matplotlib.use('Agg') # Ekransız sunucu modu (Render için şart)
+matplotlib.use('Agg') # Sunucu modu (Render için şart)
 import matplotlib.pyplot as plt
 import numpy as np
 
-# --- LOGLAMA ---
+# Loglama ayarları
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
 
-# --- TÜRKÇE KARAKTER TEMİZLEYİCİ (PDF İÇİN) ---
+# Türkçe karakter düzeltici (PDF için)
 def clean_tr(text):
     if not isinstance(text, str): return str(text)
     tr_map = str.maketrans("ğĞıİşŞçÇöÖüÜ", "gGiIsScCoOuU")
     return text.translate(tr_map)
 
-# --- OVERPASS API (OSM) ---
+# --- 1. ESKİ VE STABİL OSM SORGUSU ---
+# Bu sorgu daha az hata verir ve daha hızlıdır.
 def get_osm_data(lat, lng, radius):
     overpass_url = "http://overpass-api.de/api/interpreter"
     query = f"""
@@ -47,7 +47,7 @@ def get_osm_data(lat, lng, radius):
     except:
         return []
 
-# --- OPEN-METEO API ---
+# --- 2. HAVA DURUMU ---
 def get_weather_data(lat, lng):
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current_weather=true&elevation=true"
@@ -56,51 +56,57 @@ def get_weather_data(lat, lng):
     except:
         return {}
 
-# --- ANALİZ MOTORU ---
+# --- 3. ESKİ (BONKÖR) PUANLAMA MOTORU ---
+# Senin sevdiğin, kırmızı çıkarmayan algoritma
 def calculate_score(lat, lng, radius, elements, weather):
-    # 1. Flora
+    # Flora: Orman varsa puanı basar, yoksa "Normal" der (0 vermez)
     forest_count = sum(1 for e in elements if e.get('tags', {}).get('landuse') == 'forest')
-    flora_score = min(100, forest_count * 5 + 30)
-    flora_type = "Zengin Orman/Mera" if flora_score > 70 else "Orta Seviye"
+    flora_score = min(100, forest_count * 5 + 40) # Taban puanı 40 yaptım
+    flora_type = "Zengin Orman" if flora_score > 70 else "Maki / Mera"
 
-    # 2. Su
+    # Su: Bulamazsa simüle eder (Puanı kırmaz)
     water_nodes = [e for e in elements if e.get('tags', {}).get('natural') == 'water']
-    min_dist_water = random.randint(100, 3000) if water_nodes else 9999
-    water_score = 100 if min_dist_water < 1000 else (50 if min_dist_water < 3000 else 10)
+    if water_nodes:
+        min_dist_water = random.randint(100, 2000)
+    else:
+        min_dist_water = 9999 # Veri yoksa uzak der ama puanı öldürmez
+    
+    water_score = 100 if min_dist_water < 1000 else (50 if min_dist_water < 3000 else 20)
 
-    # 3. Rüzgar
+    # Rüzgar
     wind_speed = weather.get('current_weather', {}).get('windspeed', 10)
     wind_dir = weather.get('current_weather', {}).get('winddirection', 0)
-    wind_score = 100 if 5 < wind_speed < 25 else 40
+    wind_score = 100 if 5 < wind_speed < 25 else 50
 
-    # 4. Diğerleri (Simüle Edilmiş Veriler - MVP için)
+    # Diğerleri (Simüle - Hızlı Analiz için)
     slope = random.uniform(2, 20)
-    slope_score = 100 if 2 < slope < 15 else 40
+    slope_score = 100 if 2 < slope < 15 else 50
     
-    aspects = ["Kuzey", "Guney", "Dogu", "Bati", "Guneydogu"]
+    aspects = ["Kuzey", "Guney", "Dogu", "Bati"]
     aspect = random.choice(aspects)
-    aspect_score = 100 if "Guney" in aspect else 60
+    aspect_score = 100 if "Guney" in aspect else 70
     
     road_count = sum(1 for e in elements if e.get('tags', {}).get('highway'))
     road_dist = random.randint(50, 2000) if road_count > 0 else 5000
-    road_score = 100 if 50 < road_dist < 1000 else 50
+    road_score = 100 if 50 < road_dist < 1000 else 60
 
     build_count = sum(1 for e in elements if e.get('tags', {}).get('building'))
-    build_score = max(0, 100 - (build_count * 2))
+    build_score = max(10, 100 - (build_count * 2))
 
     elevation = weather.get('elevation', 800)
     temp = weather.get('current_weather', {}).get('temperature', 20)
-    temp_score = 80
+    temp_score = 90
 
-    # Ağırlıklı Skor
+    # Ağırlıklı Skor Hesabı
     total = (flora_score * 0.35) + (water_score * 0.15) + (wind_score * 0.10) + \
             (slope_score * 0.05) + (aspect_score * 0.10) + (road_score * 0.10) + \
             (build_score * 0.10) + (temp_score * 0.05)
 
+    # AI Yorumu
     ai_text = f"""
-    Genel Degerlendirme: Bolge {int(total)}/100 puan ile aricilik icin {'UYGUN' if total > 60 else 'RISKLI'}.
-    Avantajlar: {clean_tr(flora_type)} varligi nektar icin olumlu.
-    Dikkat: Ruzgar hizi {wind_speed} km/h seviyesinde.
+    Genel Degerlendirme: Bolge {int(total)}/100 puan.
+    Flora: {clean_tr(flora_type)}.
+    Ruzgar: {wind_speed} km/h.
     """
 
     return {
@@ -117,11 +123,11 @@ def calculate_score(lat, lng, radius, elements, weather):
         }
     }
 
-# --- GRAFİK ÇİZİMİ ---
+# --- GRAFİK ÇİZİMİ (YENİ ÖZELLİK) ---
 def create_radar_chart(breakdown, filename):
     labels = list(breakdown.keys())
     values = list(breakdown.values())
-    values += values[:1] # Döngüyü kapat
+    values += values[:1]
     angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
     angles += angles[:1]
 
@@ -135,7 +141,7 @@ def create_radar_chart(breakdown, filename):
     plt.savefig(filename, transparent=True, dpi=100)
     plt.close()
 
-# --- PDF OLUŞTURUCU ---
+# --- PDF MOTORU (YENİ ÖZELLİK) ---
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 20)
@@ -168,30 +174,30 @@ def download_report():
         lat = float(request.args.get('lat'))
         lng = float(request.args.get('lng'))
         
-        # Verileri tekrar çek
+        # Analizi tekrar yap
         res = calculate_score(lat, lng, 2000, get_osm_data(lat, lng, 2000), get_weather_data(lat, lng))
         
         pdf = PDF()
         pdf.add_page()
         
-        # 1. Bilgiler
+        # Başlık Bilgileri
         pdf.set_font('Arial', 'B', 14)
         pdf.set_text_color(0)
         pdf.cell(0, 10, f"Koordinat: {lat:.4f}, {lng:.4f}", 0, 1, 'C')
         
-        # 2. Skor
+        # Skor Kutusu
         pdf.set_fill_color(240, 240, 240)
         pdf.rect(10, 50, 190, 20, 'F')
         pdf.set_y(55)
         pdf.set_font('Arial', 'B', 16)
         pdf.cell(0, 10, f"GENEL SKOR: {res['score']} / 100", 0, 1, 'C')
         
-        # 3. Grafik
+        # Grafiği Çiz ve Ekle
         chart_path = "/tmp/radar_chart.png"
         create_radar_chart(res['breakdown'], chart_path)
         pdf.image(chart_path, x=55, y=80, w=100)
         
-        # 4. Detay Tablosu (Sayfanın altına)
+        # Detaylar
         pdf.set_y(190)
         pdf.set_font('Arial', 'B', 12)
         pdf.cell(0, 10, 'DETAYLI PARAMETRELER', 0, 1, 'L')
@@ -210,7 +216,7 @@ def download_report():
             pdf.cell(50, 8, k, 1)
             pdf.cell(100, 8, str(v), 1, 1)
 
-        # 5. Kaydet ve Gönder
+        # PDF'i Kaydet ve Gönder
         pdf_name = f"BeeLocate_{lat}_{lng}.pdf"
         pdf_path = f"/tmp/{pdf_name}"
         pdf.output(pdf_path)
@@ -220,4 +226,5 @@ def download_report():
         return str(e)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
