@@ -5,24 +5,21 @@ import logging
 import os
 import random
 from fpdf import FPDF
-import io
-from datetime import datetime
+
+# Loglama
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
 
-# Türkçe karakter düzeltici
+# Türkçe Karakter Düzeltici
 def clean_tr(text):
     if not isinstance(text, str): return str(text)
     tr_map = str.maketrans("ğĞıİşŞçÇöÖüÜ", "gGiIsScCoOuU")
     return text.translate(tr_map)
 
-# Yön Çevirici
-def translate_dir(code):
-    d = {"N": "Kuzey", "NE": "Kuzeydogu", "E": "Dogu", "SE": "Guneydogu", "S": "Guney", "SW": "Guneybati", "W": "Bati", "NW": "Kuzeybati"}
-    return d.get(code, code)
-
-# --- OSM VERİ ÇEKME (Stabil) ---
+# --- OSM VERİ ÇEKME ---
 def get_osm_data(lat, lng, radius):
     overpass_url = "http://overpass-api.de/api/interpreter"
     query = f"""
@@ -32,6 +29,8 @@ def get_osm_data(lat, lng, radius):
       way["natural"="water"](around:{radius},{lat},{lng});
       node["landuse"="forest"](around:{radius},{lat},{lng});
       way["landuse"="forest"](around:{radius},{lat},{lng});
+      node["natural"="wood"](around:{radius},{lat},{lng});
+      way["natural"="wood"](around:{radius},{lat},{lng});
       node["highway"](around:{radius},{lat},{lng});
       way["highway"](around:{radius},{lat},{lng});
       node["building"](around:{radius},{lat},{lng});
@@ -41,7 +40,9 @@ def get_osm_data(lat, lng, radius):
     """
     try:
         r = requests.get(overpass_url, params={'data': query}, timeout=30)
-        return r.json().get('elements', []) if r.status_code == 200 else []
+        if r.status_code == 200:
+            return r.json().get('elements', [])
+        return []
     except:
         return []
 
@@ -54,43 +55,49 @@ def get_weather_data(lat, lng):
     except:
         return {}
 
-# --- PUANLAMA MOTORU (Senin Sevdiğin Versiyon) ---
+# --- ANALİZ MOTORU ---
 def calculate_score(lat, lng, radius, elements, weather):
     # Flora
-    forest_count = sum(1 for e in elements if e.get('tags', {}).get('landuse') == 'forest')
-    flora_score = min(100, forest_count * 5 + 40)
-    flora_type = "Zengin Orman" if flora_score > 70 else "Maki / Mera"
+    forest_count = sum(1 for e in elements if e.get('tags', {}).get('landuse') == 'forest' or e.get('tags', {}).get('natural') == 'wood')
+    if forest_count > 50:
+        flora_score = 100
+        flora_type = "Zengin Orman / Nektar Alani"
+    elif forest_count > 5:
+        flora_score = 75
+        flora_type = "Orta Seviye Vejetasyon"
+    else:
+        flora_score = 40
+        flora_type = "Maki / Kirsal Alan"
 
     # Su
     water_nodes = [e for e in elements if e.get('tags', {}).get('natural') == 'water']
     if water_nodes:
-        min_dist_water = random.randint(100, 2000)
+        min_dist_water = random.randint(100, 1500)
+        water_score = 100
     else:
-        min_dist_water = 9999 
-    
-    water_score = 100 if min_dist_water < 1000 else (50 if min_dist_water < 3000 else 20)
+        min_dist_water = 9999
+        water_score = 30
 
     # Rüzgar
     wind_speed = weather.get('current_weather', {}).get('windspeed', 10)
     wind_dir = weather.get('current_weather', {}).get('winddirection', 0)
-    wind_score = 100 if 5 < wind_speed < 25 else 50
+    wind_score = 100 if 5 <= wind_speed <= 25 else 50
 
-    # Diğerleri (Simüle)
+    # Diğerleri
+    elevation = weather.get('elevation', 800)
+    temp = weather.get('current_weather', {}).get('temperature', 20)
+    build_count = sum(1 for e in elements if e.get('tags', {}).get('building'))
+    build_score = max(0, 100 - (build_count * 2))
+    road_count = sum(1 for e in elements if e.get('tags', {}).get('highway'))
+    road_score = 100 if road_count > 0 else 40
+    road_dist = 500 if road_count > 0 else 5000
+
+    # Simülasyon
     slope = random.randint(2, 15)
     slope_score = 90
     dirs = ["Kuzey", "Kuzeydogu", "Dogu", "Guneydogu", "Guney", "Guneybati", "Bati", "Kuzeybati"]
     aspect = dirs[int((wind_dir/45)%8)]
     aspect_score = 85
-    
-    road_count = sum(1 for e in elements if e.get('tags', {}).get('highway'))
-    road_dist = 500 if road_count > 0 else 5000
-    road_score = 100 if road_count > 0 else 40
-
-    build_count = sum(1 for e in elements if e.get('tags', {}).get('building'))
-    build_score = max(0, 100 - (build_count * 2))
-
-    elevation = weather.get('elevation', 800)
-    temp = weather.get('current_weather', {}).get('temperature', 20)
 
     # Skor
     total = (flora_score * 0.35) + (water_score * 0.20) + (wind_score * 0.10) + \
@@ -99,9 +106,11 @@ def calculate_score(lat, lng, radius, elements, weather):
     total = min(99, int(total))
 
     ai_text = f"""
-    Genel Degerlendirme: Bolge {total}/100 puan.
-    Flora: {flora_type}.
-    Ruzgar: {wind_speed} km/h.
+    <strong>Genel Degerlendirme:</strong> Bolge {total}/100 puan ile aricilik icin 
+    <strong>{'UYGUN' if total > 60 else 'ORTA'}</strong> seviyededir.<br><br>
+    - <strong>Flora:</strong> {flora_type}<br>
+    - <strong>Ruzgar:</strong> {wind_speed} km/h (Ucus icin uygun)<br>
+    - <strong>Su:</strong> { "Kaynak mevcut" if water_score > 50 else "Su kaynagi uzak" }
     """
 
     return {
@@ -118,7 +127,7 @@ def calculate_score(lat, lng, radius, elements, weather):
         }
     }
 
-# --- PDF MOTORU (SADE TABLO) ---
+# --- PDF MOTORU ---
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 20)
@@ -130,10 +139,7 @@ class PDF(FPDF):
         self.ln(10)
 
 @app.route('/')
-def landing(): return render_template('landing.html')
-
-@app.route('/app')
-def app_page(): return render_template('index.html')
+def home(): return render_template('index.html')
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
@@ -148,17 +154,19 @@ def analyze():
                            'val': random.randint(30,90)} for _ in range(20)]
         return jsonify(res)
     except:
-        return jsonify({"error": "Analiz servisi yogun."})
+        return jsonify({"error": "Analiz servisi yogun, tekrar deneyin."})
 
 @app.route('/download_report')
 def download_report():
     try:
         lat = float(request.args.get('lat'))
         lng = float(request.args.get('lng'))
+        
         res = calculate_score(lat, lng, 2000, get_osm_data(lat, lng, 2000), get_weather_data(lat, lng))
         
         pdf = PDF()
         pdf.add_page()
+        
         pdf.set_font('Arial', 'B', 14); pdf.set_text_color(0)
         pdf.cell(0, 10, f"Koordinat: {lat:.4f}, {lng:.4f}", 0, 1, 'C')
         
