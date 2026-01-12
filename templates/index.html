@@ -165,19 +165,6 @@
             document.getElementById('search-input').placeholder = T[lang].ph; document.getElementById('btn-analyze-text').innerText = T[lang].btn; document.getElementById('lbl-rad').innerText = T[lang].rad;
         }
 
-        function handleScroll(el) {
-            if (window.innerWidth >= 768) return;
-            const scrollTop = el.scrollTop;
-            const miniHeader = document.getElementById('sticky-mini-header');
-            if (scrollTop > 150) {
-                miniHeader.classList.remove('opacity-0', 'pointer-events-none');
-                miniHeader.classList.add('opacity-100', 'pointer-events-auto');
-            } else {
-                miniHeader.classList.add('opacity-0', 'pointer-events-none');
-                miniHeader.classList.remove('opacity-100', 'pointer-events-auto');
-            }
-        }
-
         function updateLocation(lat, lng) {
             if(marker) map.removeLayer(marker); heatLayerGroup.clearLayers();
             sLat = lat; sLng = lng; marker = L.marker([lat, lng]).addTo(map); updateCircle();
@@ -209,7 +196,7 @@
                 const data = await res.json(); stopProgress(); await new Promise(r => setTimeout(r, 500)); document.getElementById('loading-screen').style.display = 'none';
                 if (data.error) { alert("Hata: " + data.error); return; }
                 currentData = data; document.getElementById('result-modal').style.display = 'flex'; updateUI(); drawHeatmap(data.heatmap);
-            } catch (e) { stopProgress(); alert("Hata: " + e); document.getElementById('loading-screen').style.display = 'none'; }
+            } catch (e) { stopProgress(); alert("Sunucu Hatası: " + e); document.getElementById('loading-screen').style.display = 'none'; }
         }
 
         function drawHeatmap(points) { points.forEach(p => { let col = p.val > 70 ? '#2ecc71' : (p.val > 40 ? '#f1c40f' : '#e74c3c'); L.circle([p.lat, p.lng], { color: col, fillColor: col, fillOpacity: 0.4, radius: radius/5, stroke: false }).addTo(heatLayerGroup); }); }
@@ -233,14 +220,14 @@
             tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
-        // --- MAİL BUTONU DÜZELTİLDİ: window.location.href ---
         function shareResult() {
             if(!currentData) return;
             const d = currentData.details;
             const subject = `BeeLocate Analiz Raporu: ${currentData.score} Puan`;
+            // Düzeltildi: Google Maps linki
             const mapsLink = `https://www.google.com/maps?q=${sLat},${sLng}`;
-            const bodyText = `MERHABA,\n\nBeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:\n\n📍 KONUM BİLGİSİ\n---------------------\nKoordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}\nHaritada Gör: ${mapsLink}\n\n📊 ANALİZ ÖZETİ\n---------------------\n🏆 Skor: ${currentData.score}/100\n🌲 Flora Tipi: ${d.flora_type}\n💧 Suya Mesafe: ${d.d_water}m\n💨 Rüzgar: ${d.avg_wind} km/h\n☀️ Bakı: ${d.dir_tr}\n⛰️ Rakım: ${d.elevation}m\n\nBeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi\nwww.beelocatepro.com`;
-            // window.open mobilde bazen engellenir, bu yöntem garantidir
+            const bodyText = `MERHABA,\n\nBeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:\n\n📍 KONUM BİLGİSİ\n---------------------\nKoordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}\nHaritada Gör: ${mapsLink}\n\n📊 ANALİZ ÖZETİ\n---------------------\n🏆 Skor: ${currentData.score}/100\n🌲 Flora Tipi: ${d.flora_type}\n💧 Suya Mesafe: ${d.d_water}m\n💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})\n☀️ Bakı: ${d.dir_tr}\n⛰️ Rakım: ${d.elevation}m\n\nBeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi\n`;
+            
             window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
         }
 
