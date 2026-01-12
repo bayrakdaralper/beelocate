@@ -40,9 +40,9 @@
                 <h1 class="text-xl font-bold tracking-tight">BeeLocate <span class="text-primary">PRO</span></h1>
             </a>
             <div class="flex items-center gap-2">
-                <a href="mailto:info@beelocatepro.com?subject=BeeLocate%20PRO%20-%20İletişim" class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300 group" data-tippy-content="Bize Ulaşın / Contact Us">
+                <button onclick="sendMail()" class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300 group" data-tippy-content="Bize Ulaşın">
                     <span class="material-symbols-outlined text-xl group-active:scale-90 transition">mail</span>
-                </a>
+                </button>
                 <div class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-9 items-center">
                     <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
                     <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
@@ -101,7 +101,6 @@
 
             <div id="main-scroll-container" class="h-full overflow-y-auto no-scrollbar" onscroll="handleScroll(this)">
                 <div class="flex flex-col md:flex-row min-h-full">
-                    
                     <div class="w-full md:w-1/3 bg-[#252525] flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative">
                         <div class="p-8 flex flex-col h-full">
                             <div class="text-center md:text-left">
@@ -146,7 +145,6 @@
 
     <script>
         const T = { 'TR': { ph:'Konum ara...', btn:'ANALİZİ BAŞLAT', load:'CBS Verileri İşleniyor...', logs:['OSM Vektör Verisi...','LULC Analizi...','Hidrografik Ölçüm...','Mikroklima...'], live:'CBS ANALİZİ', score:'UYGUNLUK SKORU', dl:'RAPOR (PDF)', share:'PAYLAŞ (MAIL)', rad:'Tarama Çapı', det:'Arazi Parametreleri', high:'Yüksek Potansiyel', risk:'Kısıtlı Alan', not_found:'Veri Yok', access_err:'Erişim Kısıtlı', lbl: {flora:'VEJETASYON', water:'HİDROGRAFİ', wind:'RÜZGAR HIZI', aspect:'BAKI ANALİZİ', hum:'NEM', slope:'EĞİM', road:'ULAŞIM AĞI', build:'ANTROPOJENİK BASKI', elev:'RAKIM (DEM)', temp:'SICAKLIK'} }, 'EN': { ph:'Search location...', btn:'START ANALYSIS', load:'Processing GIS Data...', logs:['Fetching Vectors...','LULC Analysis...','Hydro Calculation...','Microclimate...'], live:'GIS ANALYSIS', score:'SUITABILITY SCORE', dl:'REPORT (PDF)', share:'SHARE (MAIL)', rad:'Scan Radius', det:'Terrain Parameters', high:'High Potential', risk:'Restricted Area', not_found:'No Data', access_err:'Restricted', lbl: {flora:'VEGETATION', water:'HYDROGRAPHY', wind:'WIND SPEED', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'TRANSPORT NETWORK', build:'ANTHROPOGENIC PRESSURE', elev:'ELEVATION (DEM)', temp:'TEMP'} } };
-        const TOOLTIPS = { 'TR': { 'flora': 'Flora yoğunluğu ve nektar potansiyeli.', 'water': 'En yakın su kaynağına mesafe.', 'wind': 'Bölgesel rüzgar hızı.', 'aspect': 'Güneşlenme durumu.', 'hum': 'Bağıl nem oranı.', 'slope': 'Arazi eğimi.', 'road': 'Yola yakınlık.', 'build': 'Yerleşim yoğunluğu.', 'elev': 'Rakım.', 'temp': 'Ortalama sıcaklık.' }, 'EN': { 'flora': 'Nectar potential.', 'water': 'Distance to water.', 'wind': 'Wind speed.', 'aspect': 'Sun orientation.', 'hum': 'Humidity.', 'slope': 'Terrain slope.', 'road': 'Road access.', 'build': 'Settlement density.', 'elev': 'Elevation.', 'temp': 'Avg temp.' } };
         
         let lang = 'TR'; let sLat, sLng, radius = 2000; let currentData = null; let map, marker, circle, heatLayerGroup; let progressInterval;
 
@@ -196,39 +194,42 @@
                 const data = await res.json(); stopProgress(); await new Promise(r => setTimeout(r, 500)); document.getElementById('loading-screen').style.display = 'none';
                 if (data.error) { alert("Hata: " + data.error); return; }
                 currentData = data; document.getElementById('result-modal').style.display = 'flex'; updateUI(); drawHeatmap(data.heatmap);
-            } catch (e) { stopProgress(); alert("Sunucu Hatası: " + e); document.getElementById('loading-screen').style.display = 'none'; }
+            } catch (e) { stopProgress(); alert("Hata: " + e); document.getElementById('loading-screen').style.display = 'none'; }
         }
 
         function drawHeatmap(points) { points.forEach(p => { let col = p.val > 70 ? '#2ecc71' : (p.val > 40 ? '#f1c40f' : '#e74c3c'); L.circle([p.lat, p.lng], { color: col, fillColor: col, fillOpacity: 0.4, radius: radius/5, stroke: false }).addTo(heatLayerGroup); }); }
 
         function updateUI() {
             if (!currentData || !currentData.details) return;
-            const d = currentData.details; const s = currentData.breakdown; const L = T[lang]; const Tooltips = TOOLTIPS[lang];
+            const d = currentData.details; const s = currentData.breakdown; const L = T[lang];
             
             document.getElementById('score-val').innerText = currentData.score; document.getElementById('score-comment').innerText = currentData.score > 70 ? L.high : L.risk; document.getElementById('dynamic-text').innerHTML = currentData.ai_text;
             document.getElementById('mini-score-val').innerText = currentData.score; document.getElementById('mini-score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
             document.getElementById('lbl-details').innerText = L.det; document.getElementById('btn-dl').innerText = L.dl;
             document.getElementById('btn-share').innerText = L.share;
 
-            const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m"; const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
-            const metrics = [ { id: 'flora', l: L.lbl.flora, v: d.flora_type, s: s.flora, i: "forest" }, { id: 'water', l: L.lbl.water, v: waterText, s: s.water, i: "water_drop" }, { id: 'wind', l: L.lbl.wind, v: `${d.avg_wind} km/h`, s: s.wind, i: "air" }, { id: 'aspect', l: L.lbl.aspect, v: d.dir_tr, s: s.aspect, i: "wb_sunny" }, { id: 'hum', l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" }, { id: 'slope', l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: s.slope, i: "landscape" }, { id: 'road', l: L.lbl.road, v: roadText, s: s.road, i: "add_road" }, { id: 'build', l: L.lbl.build, v: d.b_count, s: s.build, i: "location_city" }, { id: 'elev', l: L.lbl.elev, v: d.elevation + "m", s: 100, i: "landscape" }, { id: 'temp', l: L.lbl.temp, v: d.avg_temp + " °C", s: s.temp, i: "thermostat" } ];
+            const waterText = d.d_water >= 9000 ? L.not_found : "< 2000m (Mevcut)"; 
+            const roadText = d.d_road >= 5000 ? L.access_err : "Mevcut";
+            
+            const metrics = [ { l: L.lbl.flora, v: d.flora_type, s: s.Flora, i: "forest" }, { l: L.lbl.water, v: waterText, s: s.Su, i: "water_drop" }, { l: L.lbl.wind, v: `${d.avg_wind} km/h`, s: s.Ruzgar, i: "air" }, { l: L.lbl.aspect, v: d.dir_tr, s: 70, i: "wb_sunny" }, { l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" }, { l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: 80, i: "landscape" }, { l: L.lbl.road, v: roadText, s: s.Ulasim, i: "add_road" }, { l: L.lbl.build, v: d.b_count, s: s.Baski, i: "location_city" }, { l: L.lbl.elev, v: d.elevation + "m", s: 100, i: "landscape" }, { l: L.lbl.temp, v: d.avg_temp + " °C", s: 80, i: "thermostat" } ];
 
             const grid = document.getElementById('metrics-grid'); grid.innerHTML = '';
-            metrics.forEach(m => { const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500"); const infoText = Tooltips[m.id] || "";
-                grid.innerHTML += `<div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between relative group hover:border-primary/50 transition"><span class="material-symbols-outlined absolute top-2 right-2 text-gray-500 text-sm cursor-help hover:text-white transition" data-tippy-content="${infoText}" data-theme="custom">info</span><div class="flex justify-between items-start mb-2"><div><div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">${m.l}</div><div class="text-white font-bold text-lg leading-tight truncate w-32 md:w-40">${m.v}</div></div><span class="material-symbols-outlined text-gray-600 text-2xl">${m.i}</span></div><div class="w-full h-1.5 bg-gray-700 mt-2 rounded-full overflow-hidden"><div class="h-full ${barColor}" style="width: ${m.s}%"></div></div></div>`;
+            metrics.forEach(m => { const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500");
+                grid.innerHTML += `<div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between"><div class="flex justify-between items-start mb-2"><div><div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">${m.l}</div><div class="text-white font-bold text-lg leading-tight truncate w-32 md:w-40">${m.v}</div></div><span class="material-symbols-outlined text-gray-600 text-2xl">${m.i}</span></div><div class="w-full h-1.5 bg-gray-700 mt-2 rounded-full overflow-hidden"><div class="h-full ${barColor}" style="width: ${m.s}%"></div></div></div>`;
             });
-            tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
         function shareResult() {
             if(!currentData) return;
             const d = currentData.details;
             const subject = `BeeLocate Analiz Raporu: ${currentData.score} Puan`;
-            // Düzeltildi: Google Maps linki
             const mapsLink = `https://www.google.com/maps?q=${sLat},${sLng}`;
-            const bodyText = `MERHABA,\n\nBeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:\n\n📍 KONUM BİLGİSİ\n---------------------\nKoordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}\nHaritada Gör: ${mapsLink}\n\n📊 ANALİZ ÖZETİ\n---------------------\n🏆 Skor: ${currentData.score}/100\n🌲 Flora Tipi: ${d.flora_type}\n💧 Suya Mesafe: ${d.d_water}m\n💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})\n☀️ Bakı: ${d.dir_tr}\n⛰️ Rakım: ${d.elevation}m\n\nBeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi\n`;
-            
+            const bodyText = `MERHABA,\n\nBeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:\n\n📍 KONUM BİLGİSİ\n---------------------\nKoordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}\nHaritada Gör: ${mapsLink}\n\n📊 ANALİZ ÖZETİ\n---------------------\n🏆 Skor: ${currentData.score}/100\n🌲 Flora Tipi: ${d.flora_type}\n💧 Suya Mesafe: ${d.d_water}m\n💨 Rüzgar: ${d.avg_wind} km/h\n☀️ Bakı: ${d.dir_tr}\n⛰️ Rakım: ${d.elevation}m\n\nBeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi\nwww.beelocatepro.com`;
             window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+        }
+
+        function sendMail() {
+            window.location.href = "mailto:info@beelocatepro.com?subject=BeeLocate%20PRO%20-%20İletişim";
         }
 
         function handleScroll(el) { if (window.innerWidth >= 768) return; const miniHeader = document.getElementById('sticky-mini-header'); if (el.scrollTop > 150) { miniHeader.classList.remove('opacity-0', 'pointer-events-none'); miniHeader.classList.add('opacity-100', 'pointer-events-auto'); } else { miniHeader.classList.add('opacity-0', 'pointer-events-none'); miniHeader.classList.remove('opacity-100', 'pointer-events-auto'); } }
@@ -236,7 +237,6 @@
         function closeModalBtn() { document.getElementById('result-modal').style.display='none'; }
         function downloadReport() { window.open(`/download_report?lat=${sLat}&lng=${sLng}&radius=${radius}&lang=${lang}`, '_blank'); }
         initMap();
-        
         tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
     </script>
 </body>
