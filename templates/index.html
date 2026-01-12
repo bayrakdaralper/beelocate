@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v3.0</title>
+<title>BeeLocate PRO v3.1</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -16,7 +16,6 @@
     tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#FFC107", "primary-hover": "#FFB300", "bg-dark": "#212121", "surface": "#1a1a1a" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
 </script>
 <style>
-    /* Sayfa arkasının kaymasını engelle */
     body { overscroll-behavior-y: none; position: fixed; width: 100%; height: 100%; overflow: hidden; }
     #map { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
     .radar-spinner { width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, rgba(255, 193, 7, 0.5) 100%); animation: radar-spin 1.5s linear infinite; position: relative; }
@@ -42,7 +41,7 @@
             </a>
             <div class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg">
                 <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
-                <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition">EN</button>
+                <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
             </div>
         </div>
     </div>
@@ -81,9 +80,7 @@
     </div>
 
     <div id="result-modal" class="fixed inset-0 z-40 hidden flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onclick="closeModal(event)">
-        
         <div id="modal-content" class="bg-[#1e1e1e] w-full md:w-full md:max-w-6xl md:rounded-3xl rounded-t-3xl border-t md:border border-white/10 shadow-2xl h-[85vh] md:h-[750px] relative slide-up overflow-hidden" onclick="event.stopPropagation()">
-            
             <button onclick="closeModalBtn()" class="absolute top-4 right-4 z-[70] bg-white/10 hover:bg-red-500 hover:text-white text-white rounded-full p-2 transition shadow-lg backdrop-blur-md">
                 <span class="material-symbols-outlined text-2xl">close</span>
             </button>
@@ -99,9 +96,7 @@
             </div>
 
             <div id="main-scroll-container" class="h-full overflow-y-auto no-scrollbar" onscroll="handleScroll(this)">
-                
                 <div class="flex flex-col md:flex-row min-h-full">
-                    
                     <div class="w-full md:w-1/3 bg-[#252525] flex flex-col border-b md:border-b-0 md:border-r border-white/5 relative">
                         <div class="p-8 flex flex-col h-full">
                             <div class="text-center md:text-left">
@@ -135,14 +130,12 @@
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 pb-24" id="metrics-grid"></div>
                     </div>
-
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // --- TEXT CONSTANTS & LOGIC ---
         const T = {
             'TR': { 
                 ph:'Konum ara... (Örn: Sarıcakaya)', btn:'ANALİZİ BAŞLAT', load:'CBS Verileri İşleniyor...', 
@@ -159,6 +152,7 @@
                 lbl: {flora:'VEGETATION', water:'HYDROGRAPHY', wind:'WIND SPEED', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'TRANSPORT NETWORK', build:'ANTHROPOGENIC PRESSURE', elev:'ELEVATION (DEM)', temp:'TEMP'}
             }
         };
+        
         const INFO = { 'VEJETASYON': 'Flora nektar potansiyeli.', 'HİDROGRAFİ': 'Suya mesafe.', 'RÜZGAR HIZI': 'Rüzgar uygunluğu.', 'BAKI ANALİZİ': 'Güneşlenme.', 'NEM': 'Bağıl nem.', 'EĞİM': 'Arazi eğimi.', 'ULAŞIM AĞI': 'Yola mesafe.', 'ANTROPOJENİK BASKI': 'Yerleşim yoğunluğu.', 'RAKIM (DEM)': 'Yükseklik.', 'SICAKLIK': 'Ortalama sıcaklık.' };
         
         let lang = 'TR';
@@ -176,15 +170,37 @@
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
         }
 
-        // --- BASİTLEŞTİRİLMİŞ SCROLL MANTIĞI ---
-        function handleScroll(el) {
-            // Sadece mobilde çalışsın
-            if (window.innerWidth >= 768) return;
+        // --- DİL DEĞİŞTİRME FONKSİYONU (DÜZELTİLDİ) ---
+        function setLang(l) { 
+            lang = l; 
+            
+            // Buton Renklerini Güncelle
+            const btnTr = document.getElementById('btn-tr');
+            const btnEn = document.getElementById('btn-en');
+            
+            if (l === 'TR') {
+                btnTr.className = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition";
+                btnEn.className = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white";
+            } else {
+                btnEn.className = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition";
+                btnTr.className = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white";
+            }
 
+            // Metinleri Güncelle (Analiz yapmadan)
+            document.getElementById('search-input').placeholder = T[lang].ph;
+            document.getElementById('btn-analyze-text').innerText = T[lang].btn;
+            document.getElementById('lbl-rad').innerText = T[lang].rad;
+            
+            // Eğer daha önce analiz yapılmışsa, verileri yeni dilde çekmek için tekrar çalıştır
+            if(currentData && sLat && sLng) {
+                runSmartAnalysis();
+            }
+        }
+
+        function handleScroll(el) {
+            if (window.innerWidth >= 768) return;
             const scrollTop = el.scrollTop;
             const miniHeader = document.getElementById('sticky-mini-header');
-
-            // 150px aşağı inince Mini Header'ı göster
             if (scrollTop > 150) {
                 miniHeader.classList.remove('opacity-0', 'pointer-events-none');
                 miniHeader.classList.add('opacity-100', 'pointer-events-auto');
@@ -253,14 +269,14 @@
             if (!currentData || !currentData.details) return;
             const d = currentData.details; const s = currentData.breakdown; const L = T[lang];
             
-            // Büyük Skor
             document.getElementById('score-val').innerText = currentData.score;
             document.getElementById('score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
             document.getElementById('dynamic-text').innerHTML = currentData.ai_text;
 
-            // Mini Skor (Gizli olan)
             document.getElementById('mini-score-val').innerText = currentData.score;
             document.getElementById('mini-score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
+            document.getElementById('lbl-details').innerText = L.det; // Başlık da değişsin
+            document.getElementById('btn-dl').innerText = L.dl; // Buton da değişsin
 
             const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m";
             const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
@@ -280,6 +296,7 @@
             const grid = document.getElementById('metrics-grid'); grid.innerHTML = '';
             metrics.forEach(m => {
                 const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500");
+                const infoText = INFO[m.l] || ""; // Info tooltip metni eklenebilir
                 grid.innerHTML += `
                 <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between relative group hover:border-primary/50 transition">
                     <div class="flex justify-between items-start mb-2">
@@ -292,7 +309,6 @@
             });
         }
 
-        function setLang(l) { lang = l; if(currentData) runSmartAnalysis(); }
         function closeModal(e) { if(e.target.id === 'result-modal') document.getElementById('result-modal').style.display='none'; }
         function closeModalBtn() { document.getElementById('result-modal').style.display='none'; }
         function downloadReport() { window.open(`/download_report?lat=${sLat}&lng=${sLng}&radius=${radius}&lang=${lang}`, '_blank'); }
