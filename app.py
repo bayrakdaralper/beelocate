@@ -9,7 +9,6 @@ import requests
 import numpy as np
 import io
 import traceback
-from datetime import datetime
 from math import sqrt, atan2, degrees, pi
 import matplotlib
 matplotlib.use('Agg')
@@ -20,7 +19,7 @@ import os
 app = Flask(__name__)
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 600})
 
-# --- DİL AYARLARI ---
+# --- DİL VE METİN AYARLARI ---
 TRANS = {
     'TR': {
         'title': 'ARICILIK SAHA ANALIZ RAPORU', 'score': 'SKOR', 
@@ -118,6 +117,7 @@ def get_terrain_pro(lat, lng):
     except: return 0, 0, "N", 0
 
 def calculate_score(lat, lng, radius=2000, lang="TR"):
+    # Cache key dil kodunu da içeriyor, böylece TR ve EN karışmaz
     cache_key = f"stable_score_{round(lat,4)}_{round(lng,4)}_{radius}_{lang}"
     cached = cache.get(cache_key)
     if cached: return cached
@@ -141,11 +141,12 @@ def calculate_score(lat, lng, radius=2000, lang="TR"):
     meteo = get_meteo_extended(lat, lng)
     slope_pct, slope_deg, aspect_dir, elevation = get_terrain_pro(lat, lng)
 
-    # --- FLORA İSİMLENDİRME (DİL DESTEKLİ) ---
+    # --- FLORA ÇEVİRİSİ (BUG FIX: ORMAN SORUNU) ---
     flora_map = {
         'TR': {'wood':'Orman', 'forest':'Orman', 'meadow':'Mera', 'grass':'Mera', 'farm':'Tarim', 'scrub':'Calilik', 'unknown':'Bilinmiyor'},
         'EN': {'wood':'Forest', 'forest':'Forest', 'meadow':'Meadow', 'grass':'Grassland', 'farm':'Agriculture', 'scrub':'Scrubland', 'unknown':'Unknown'}
     }
+    # Seçilen dile göre sözlüğü al
     L_FLORA = flora_map.get(lang, flora_map['TR'])
 
     d_flora = 9999; flora_key = "unknown"
@@ -153,11 +154,13 @@ def calculate_score(lat, lng, radius=2000, lang="TR"):
         d_flora = f.distance(p).min()*111000
         near = f.iloc[f.distance(p).argmin()]
         ts = str(near.get('natural',''))+str(near.get('landuse',''))
+        # Ham veriye göre anahtar (key) belirle
         if "wood" in ts or "forest" in ts: flora_key = "wood"
         elif "meadow" in ts or "grass" in ts: flora_key = "meadow"
         elif "farm" in ts: flora_key = "farm"
         else: flora_key = "scrub"
     
+    # Anahtarı seçilen dildeki karşılığına çevir
     flora_name = L_FLORA.get(flora_key, L_FLORA['unknown'])
     
     # Puanlama
