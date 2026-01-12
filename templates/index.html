@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>BeeLocate PRO v3.6</title>
+<title>BeeLocate PRO v3.7</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -36,21 +36,14 @@
 
     <div class="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 md:w-[600px] z-20 flex flex-col gap-3 pointer-events-none">
         <div class="flex justify-between items-center px-2 pointer-events-auto">
-            
             <a href="/" class="flex items-center gap-2 drop-shadow-md bg-black/60 px-4 py-2 rounded-full backdrop-blur cursor-pointer border border-white/10 hover:bg-black/80 transition group">
                 <span class="material-symbols-outlined text-primary text-3xl group-hover:scale-110 transition">hive</span>
                 <h1 class="text-xl font-bold tracking-tight">BeeLocate <span class="text-primary">PRO</span></h1>
             </a>
-
             <div class="flex items-center gap-2">
-                
-                <a href="mailto:info@beelocatepro.com?subject=BeeLocate%20PRO%20-%20İletişim" 
-                   target="_blank"
-                   class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300 group" 
-                   title="Mail Gönder / Send Mail">
+                <a href="mailto:info@beelocatepro.com?subject=BeeLocate%20PRO%20-%20İletişim" target="_blank" class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300 group" title="Mail Gönder">
                     <span class="material-symbols-outlined text-xl group-active:scale-90 transition">mail</span>
                 </a>
-
                 <div class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-9 items-center">
                     <button onclick="setLang('TR')" id="btn-tr" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
                     <button onclick="setLang('EN')" id="btn-en" class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
@@ -140,9 +133,16 @@
                     <div class="w-full md:w-2/3 p-4 md:p-8 bg-[#1e1e1e]">
                         <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-3 sticky top-0 md:static z-10 py-2">
                             <h3 class="text-xl md:text-2xl font-bold text-white text-center md:text-left" id="lbl-details">Arazi Parametreleri</h3>
-                            <button onclick="downloadReport()" class="bg-primary hover:bg-primary-hover text-black px-6 py-3 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-lg w-full md:w-auto justify-center transform active:scale-95">
-                                <span class="material-symbols-outlined">download</span> <span id="btn-dl">Fizibilite Raporu (PDF)</span>
-                            </button>
+                            
+                            <div class="flex gap-2 w-full md:w-auto">
+                                <button onclick="downloadReport()" class="flex-1 bg-primary hover:bg-primary-hover text-black px-4 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg transform active:scale-95">
+                                    <span class="material-symbols-outlined">download</span> <span id="btn-dl">Rapor (PDF)</span>
+                                </button>
+                                <button onclick="shareResult()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-3 rounded-xl transition flex items-center justify-center shadow-lg transform active:scale-95" title="Sonucu Mail At">
+                                    <span class="material-symbols-outlined">forward_to_inbox</span>
+                                </button>
+                            </div>
+
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 pb-24" id="metrics-grid"></div>
                     </div>
@@ -152,88 +152,24 @@
     </div>
 
     <script>
-        const T = {
-            'TR': { 
-                ph:'Konum ara... (Örn: Sarıcakaya)', btn:'ANALİZİ BAŞLAT', load:'CBS Verileri İşleniyor...', 
-                logs:['OSM Vektör Verisi Çekiliyor...','LULC (Arazi Kullanım) Analizi...','Hidrografik Mesafe Ölçümü...','Mikroklima Verisi İşleniyor...'], 
-                live:'CBS ANALİZİ', score:'UYGUNLUK SKORU', dl:'FİZİBİLİTE RAPORU (PDF)', rad:'Tarama Çapı (Buffer)', det:'Arazi Parametreleri', 
-                high:'Yüksek Potansiyel', risk:'Kısıtlı/Riskli Alan', not_found:'Veri Yok', access_err:'Erişim Kısıtlı',
-                lbl: {flora:'VEJETASYON', water:'HİDROGRAFİ', wind:'RÜZGAR HIZI', aspect:'BAKI ANALİZİ', hum:'NEM', slope:'EĞİM', road:'ULAŞIM AĞI', build:'ANTROPOJENİK BASKI', elev:'RAKIM (DEM)', temp:'SICAKLIK'}
-            },
-            'EN': { 
-                ph:'Search location...', btn:'START ANALYSIS', load:'Processing GIS Data...', 
-                logs:['Fetching OSM Vectors...','LULC Analysis...','Hydrographic Distance Calc...','Processing Microclimate...'], 
-                live:'GIS ANALYSIS', score:'SUITABILITY SCORE', dl:'FEASIBILITY REPORT (PDF)', rad:'Scan Radius (Buffer)', det:'Terrain Parameters', 
-                high:'High Potential', risk:'Restricted/Risky Area', not_found:'No Data', access_err:'Restricted Access',
-                lbl: {flora:'VEGETATION', water:'HYDROGRAPHY', wind:'WIND SPEED', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'TRANSPORT NETWORK', build:'ANTHROPOGENIC PRESSURE', elev:'ELEVATION (DEM)', temp:'TEMP'}
-            }
-        };
+        const T = { 'TR': { ph:'Konum ara...', btn:'ANALİZİ BAŞLAT', load:'CBS Verileri İşleniyor...', logs:['OSM Vektör Verisi...','LULC Analizi...','Hidrografik Ölçüm...','Mikroklima...'], live:'CBS ANALİZİ', score:'UYGUNLUK SKORU', dl:'RAPOR (PDF)', rad:'Tarama Çapı', det:'Arazi Parametreleri', high:'Yüksek Potansiyel', risk:'Kısıtlı Alan', not_found:'Veri Yok', access_err:'Erişim Kısıtlı', lbl: {flora:'VEJETASYON', water:'HİDROGRAFİ', wind:'RÜZGAR HIZI', aspect:'BAKI ANALİZİ', hum:'NEM', slope:'EĞİM', road:'ULAŞIM AĞI', build:'ANTROPOJENİK BASKI', elev:'RAKIM (DEM)', temp:'SICAKLIK'} }, 'EN': { ph:'Search location...', btn:'START ANALYSIS', load:'Processing GIS Data...', logs:['Fetching Vectors...','LULC Analysis...','Hydro Calculation...','Microclimate...'], live:'GIS ANALYSIS', score:'SUITABILITY SCORE', dl:'REPORT (PDF)', rad:'Scan Radius', det:'Terrain Parameters', high:'High Potential', risk:'Restricted Area', not_found:'No Data', access_err:'Restricted', lbl: {flora:'VEGETATION', water:'HYDROGRAPHY', wind:'WIND SPEED', aspect:'ASPECT', hum:'HUMIDITY', slope:'SLOPE', road:'TRANSPORT NETWORK', build:'ANTHROPOGENIC PRESSURE', elev:'ELEVATION (DEM)', temp:'TEMP'} } };
+        const TOOLTIPS = { 'TR': { 'flora': 'Flora yoğunluğu ve nektar potansiyeli.', 'water': 'En yakın su kaynağına mesafe.', 'wind': 'Bölgesel rüzgar hızı.', 'aspect': 'Güneşlenme durumu.', 'hum': 'Bağıl nem oranı.', 'slope': 'Arazi eğimi.', 'road': 'Yola yakınlık.', 'build': 'Yerleşim yoğunluğu.', 'elev': 'Rakım.', 'temp': 'Ortalama sıcaklık.' }, 'EN': { 'flora': 'Nectar potential.', 'water': 'Distance to water.', 'wind': 'Wind speed.', 'aspect': 'Sun orientation.', 'hum': 'Humidity.', 'slope': 'Terrain slope.', 'road': 'Road access.', 'build': 'Settlement density.', 'elev': 'Elevation.', 'temp': 'Avg temp.' } };
         
-        const TOOLTIPS = {
-            'TR': {
-                'flora': 'Flora yoğunluğu ve nektar potansiyeli (Land Use analizi).',
-                'water': 'En yakın doğal su kaynağına kuş uçuşu mesafe.',
-                'wind': 'Bölgesel rüzgar hızı ve aerodinamik uygunluk.',
-                'aspect': 'Arazinin güneşe yönelimi. Isı yönetimi için kritik.',
-                'hum': 'Bağıl nem oranı (%40-70 arası idealdir).',
-                'slope': 'Topografik eğim. %15 üzeri risklidir.',
-                'road': 'Ana yollara yakınlık ve lojistik erişim kolaylığı.',
-                'build': 'Yerleşim ve insan baskısı yoğunluğu.',
-                'elev': 'Deniz seviyesinden yükseklik (Rakım).',
-                'temp': 'Ortalama sıcaklık rejimi.'
-            },
-            'EN': {
-                'flora': 'Flora density and nectar potential (Land Use analysis).',
-                'water': 'Euclidean distance to the nearest natural water source.',
-                'wind': 'Regional wind speed and aerodynamic suitability.',
-                'aspect': 'Terrain orientation to sun. Critical for heat management.',
-                'hum': 'Relative humidity (40-70% is ideal).',
-                'slope': 'Topographic slope. Over 15% is risky.',
-                'road': 'Proximity to main roads and logistic access.',
-                'build': 'Settlement density and anthropogenic pressure.',
-                'elev': 'Elevation above sea level (DEM).',
-                'temp': 'Average temperature regime.'
-            }
-        };
-        
-        let lang = 'TR';
-        let sLat, sLng, radius = 2000;
-        let currentData = null; 
-        let map, marker, circle, heatLayerGroup;
-        let progressInterval;
+        let lang = 'TR'; let sLat, sLng, radius = 2000; let currentData = null; let map, marker, circle, heatLayerGroup; let progressInterval;
 
         function initMap() {
             map = L.map('map', { zoomControl: false }).setView([39.8105, 30.5050], 12); 
             var sat = L.tileLayer('https://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', {attribution:'Google Satellite | BeeLocate'});
-            sat.addTo(map);
-            L.control.zoom({position:'bottomright'}).addTo(map);
-            heatLayerGroup = L.layerGroup().addTo(map);
+            sat.addTo(map); L.control.zoom({position:'bottomright'}).addTo(map); heatLayerGroup = L.layerGroup().addTo(map);
             map.on('click', function(e) { updateLocation(e.latlng.lat, e.latlng.lng); });
         }
 
         function setLang(l) {
             lang = l;
             const btnTr = document.getElementById('btn-tr'); const btnEn = document.getElementById('btn-en');
-            const activeStyle = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition";
-            const inactiveStyle = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white";
-            if (l === 'TR') { btnTr.className = activeStyle; btnEn.className = inactiveStyle; } 
-            else { btnEn.className = activeStyle; btnTr.className = inactiveStyle; }
-            document.getElementById('search-input').placeholder = T[lang].ph;
-            document.getElementById('btn-analyze-text').innerText = T[lang].btn;
-            document.getElementById('lbl-rad').innerText = T[lang].rad;
-        }
-
-        function handleScroll(el) {
-            if (window.innerWidth >= 768) return;
-            const scrollTop = el.scrollTop;
-            const miniHeader = document.getElementById('sticky-mini-header');
-            if (scrollTop > 150) {
-                miniHeader.classList.remove('opacity-0', 'pointer-events-none');
-                miniHeader.classList.add('opacity-100', 'pointer-events-auto');
-            } else {
-                miniHeader.classList.add('opacity-0', 'pointer-events-none');
-                miniHeader.classList.remove('opacity-100', 'pointer-events-auto');
-            }
+            if (l === 'TR') { btnTr.className = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition"; btnEn.className = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white"; } 
+            else { btnEn.className = "px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition"; btnTr.className = "px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white"; }
+            document.getElementById('search-input').placeholder = T[lang].ph; document.getElementById('btn-analyze-text').innerText = T[lang].btn; document.getElementById('lbl-rad').innerText = T[lang].rad;
         }
 
         function updateLocation(lat, lng) {
@@ -243,15 +179,9 @@
 
         async function handleSearch(e) {
             if (e.key === 'Enter') {
-                const query = document.getElementById('search-input').value; if (!query) return;
-                document.getElementById('search-input').blur();
-                try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
-                    const data = await res.json();
-                    if (data && data.length > 0) {
-                        const lat = parseFloat(data[0].lat); const lon = parseFloat(data[0].lon);
-                        map.setView([lat, lon], 13); updateLocation(lat, lon);
-                    } else { alert("Konum bulunamadı."); }
+                const query = document.getElementById('search-input').value; if (!query) return; document.getElementById('search-input').blur();
+                try { const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`); const data = await res.json();
+                    if (data && data.length > 0) { const lat = parseFloat(data[0].lat); const lon = parseFloat(data[0].lon); map.setView([lat, lon], 13); updateLocation(lat, lon); } else { alert("Konum bulunamadı."); }
                 } catch (err) { console.error(err); }
             }
         }
@@ -260,15 +190,8 @@
         function updateCircle() { if(circle) map.removeLayer(circle); if(sLat) circle = L.circle([sLat, sLng], {color:'#FFC107', fillColor:'#FFC107', fillOpacity:0.1, radius: radius}).addTo(map); }
 
         function startProgress() {
-            let percent = 0; const el = document.getElementById('loading-percent'); const logBox = document.getElementById('log-container');
-            logBox.innerHTML = ''; const logs = T[lang].logs; let logIndex = 0;
-            progressInterval = setInterval(() => {
-                let increment = percent < 90 ? Math.random() * 5 : 0.5; percent += increment; if(percent>99) percent=99;
-                el.innerText = Math.floor(percent) + "%";
-                if (percent > (logIndex + 1) * 20 && logIndex < logs.length) {
-                    let p = document.createElement('p'); p.innerText = logs[logIndex]; p.style.color = '#4ade80'; logBox.prepend(p); logIndex++;
-                }
-            }, 100);
+            let percent = 0; const el = document.getElementById('loading-percent'); const logBox = document.getElementById('log-container'); logBox.innerHTML = ''; const logs = T[lang].logs; let logIndex = 0;
+            progressInterval = setInterval(() => { let increment = percent < 90 ? Math.random() * 5 : 0.5; percent += increment; if(percent>99) percent=99; el.innerText = Math.floor(percent) + "%"; if (percent > (logIndex + 1) * 20 && logIndex < logs.length) { let p = document.createElement('p'); p.innerText = logs[logIndex]; p.style.color = '#4ade80'; logBox.prepend(p); logIndex++; } }, 100);
         }
         function stopProgress() { clearInterval(progressInterval); document.getElementById('loading-percent').innerText = "100%"; }
 
@@ -277,67 +200,65 @@
             document.getElementById('loading-screen').style.display = 'flex'; startProgress();
             try {
                 const res = await fetch('/analyze', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ lat: sLat, lng: sLng, radius: radius, lang: lang }) });
-                const data = await res.json(); stopProgress();
-                await new Promise(r => setTimeout(r, 500)); document.getElementById('loading-screen').style.display = 'none';
-                if (data.error) { alert("Sistem Hatası: " + data.error); return; }
+                const data = await res.json(); stopProgress(); await new Promise(r => setTimeout(r, 500)); document.getElementById('loading-screen').style.display = 'none';
+                if (data.error) { alert("Hata: " + data.error); return; }
                 currentData = data; document.getElementById('result-modal').style.display = 'flex'; updateUI(); drawHeatmap(data.heatmap);
             } catch (e) { stopProgress(); alert("Hata: " + e); document.getElementById('loading-screen').style.display = 'none'; }
         }
 
-        function drawHeatmap(points) {
-            points.forEach(p => {
-                let col = p.val > 70 ? '#2ecc71' : (p.val > 40 ? '#f1c40f' : '#e74c3c');
-                L.circle([p.lat, p.lng], { color: col, fillColor: col, fillOpacity: 0.4, radius: radius/5, stroke: false }).addTo(heatLayerGroup);
-            });
-        }
+        function drawHeatmap(points) { points.forEach(p => { let col = p.val > 70 ? '#2ecc71' : (p.val > 40 ? '#f1c40f' : '#e74c3c'); L.circle([p.lat, p.lng], { color: col, fillColor: col, fillOpacity: 0.4, radius: radius/5, stroke: false }).addTo(heatLayerGroup); }); }
 
         function updateUI() {
             if (!currentData || !currentData.details) return;
-            const d = currentData.details; const s = currentData.breakdown; const L = T[lang];
-            const Tooltips = TOOLTIPS[lang];
+            const d = currentData.details; const s = currentData.breakdown; const L = T[lang]; const Tooltips = TOOLTIPS[lang];
             
-            document.getElementById('score-val').innerText = currentData.score;
-            document.getElementById('score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
-            document.getElementById('dynamic-text').innerHTML = currentData.ai_text;
+            document.getElementById('score-val').innerText = currentData.score; document.getElementById('score-comment').innerText = currentData.score > 70 ? L.high : L.risk; document.getElementById('dynamic-text').innerHTML = currentData.ai_text;
+            document.getElementById('mini-score-val').innerText = currentData.score; document.getElementById('mini-score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
+            document.getElementById('lbl-details').innerText = L.det; document.getElementById('btn-dl').innerText = L.dl;
 
-            document.getElementById('mini-score-val').innerText = currentData.score;
-            document.getElementById('mini-score-comment').innerText = currentData.score > 70 ? L.high : L.risk;
-            document.getElementById('lbl-details').innerText = L.det; 
-            document.getElementById('btn-dl').innerText = L.dl; 
-
-            const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m";
-            const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
-            const metrics = [
-                { id: 'flora', l: L.lbl.flora, v: d.flora_type, s: s.flora, i: "forest" },
-                { id: 'water', l: L.lbl.water, v: waterText, s: s.water, i: "water_drop" },
-                { id: 'wind', l: L.lbl.wind, v: `${d.avg_wind} km/h`, s: s.wind, i: "air" },
-                { id: 'aspect', l: L.lbl.aspect, v: d.dir_tr, s: s.aspect, i: "wb_sunny" },
-                { id: 'hum', l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" },
-                { id: 'slope', l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: s.slope, i: "landscape" },
-                { id: 'road', l: L.lbl.road, v: roadText, s: s.road, i: "add_road" },
-                { id: 'build', l: L.lbl.build, v: d.b_count, s: s.build, i: "location_city" },
-                { id: 'elev', l: L.lbl.elev, v: d.elevation + "m", s: 100, i: "landscape" },
-                { id: 'temp', l: L.lbl.temp, v: d.avg_temp + " °C", s: s.temp, i: "thermostat" }
-            ];
+            const waterText = d.d_water >= 9000 ? L.not_found : d.d_water + "m"; const roadText = d.d_road >= 5000 ? L.access_err : d.d_road + "m";
+            const metrics = [ { id: 'flora', l: L.lbl.flora, v: d.flora_type, s: s.flora, i: "forest" }, { id: 'water', l: L.lbl.water, v: waterText, s: s.water, i: "water_drop" }, { id: 'wind', l: L.lbl.wind, v: `${d.avg_wind} km/h`, s: s.wind, i: "air" }, { id: 'aspect', l: L.lbl.aspect, v: d.dir_tr, s: s.aspect, i: "wb_sunny" }, { id: 'hum', l: L.lbl.hum, v: "%" + d.avg_hum, s: 50, i: "humidity_percentage" }, { id: 'slope', l: L.lbl.slope, v: "%" + parseInt(d.s_val), s: s.slope, i: "landscape" }, { id: 'road', l: L.lbl.road, v: roadText, s: s.road, i: "add_road" }, { id: 'build', l: L.lbl.build, v: d.b_count, s: s.build, i: "location_city" }, { id: 'elev', l: L.lbl.elev, v: d.elevation + "m", s: 100, i: "landscape" }, { id: 'temp', l: L.lbl.temp, v: d.avg_temp + " °C", s: s.temp, i: "thermostat" } ];
 
             const grid = document.getElementById('metrics-grid'); grid.innerHTML = '';
-            metrics.forEach(m => {
-                const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500");
-                const infoText = Tooltips[m.id] || "";
-                grid.innerHTML += `
-                <div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between relative group hover:border-primary/50 transition">
-                    <span class="material-symbols-outlined absolute top-2 right-2 text-gray-500 text-sm cursor-help hover:text-white transition" data-tippy-content="${infoText}" data-theme="custom">info</span>
-                    <div class="flex justify-between items-start mb-2">
-                        <div><div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">${m.l}</div>
-                        <div class="text-white font-bold text-lg leading-tight truncate w-32 md:w-40">${m.v}</div></div>
-                        <span class="material-symbols-outlined text-gray-600 text-2xl">${m.i}</span>
-                    </div>
-                    <div class="w-full h-1.5 bg-gray-700 mt-2 rounded-full overflow-hidden"><div class="h-full ${barColor}" style="width: ${m.s}%"></div></div>
-                </div>`;
+            metrics.forEach(m => { const barColor = m.s > 70 ? "bg-green-500" : (m.s > 40 ? "bg-yellow-500" : "bg-red-500"); const infoText = Tooltips[m.id] || "";
+                grid.innerHTML += `<div class="bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col justify-between relative group hover:border-primary/50 transition"><span class="material-symbols-outlined absolute top-2 right-2 text-gray-500 text-sm cursor-help hover:text-white transition" data-tippy-content="${infoText}" data-theme="custom">info</span><div class="flex justify-between items-start mb-2"><div><div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">${m.l}</div><div class="text-white font-bold text-lg leading-tight truncate w-32 md:w-40">${m.v}</div></div><span class="material-symbols-outlined text-gray-600 text-2xl">${m.i}</span></div><div class="w-full h-1.5 bg-gray-700 mt-2 rounded-full overflow-hidden"><div class="h-full ${barColor}" style="width: ${m.s}%"></div></div></div>`;
             });
             tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
+        // --- YENİ: ANALİZ SONUCUNU MAİL ATMA FONKSİYONU ---
+        function shareResult() {
+            if(!currentData) return;
+            const d = currentData.details;
+            const subject = encodeURIComponent(`BeeLocate Analiz Raporu: ${currentData.score} Puan`);
+            
+            // Mail içeriğini oluştur
+            const bodyText = `
+MERHABA,
+BeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:
+
+📍 KONUM BİLGİSİ
+---------------------
+Koordinat: ${sLat.toFixed(4)}, ${sLng.toFixed(4)}
+Google Maps: https://maps.google.com/?q=${sLat},${sLng}
+
+📊 ANALİZ ÖZETİ
+---------------------
+🏆 Skor: ${currentData.score}/100
+🌲 Flora Tipi: ${d.flora_type}
+💧 Suya Mesafe: ${d.d_water}m
+💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})
+☀️ Bakı: ${d.dir_tr}
+⛰️ Rakım: ${d.elevation}m
+
+BeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi
+www.beelocatepro.com
+            `;
+            
+            window.location.href = `mailto:?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+        }
+
+        function handleScroll(el) { if (window.innerWidth >= 768) return; const miniHeader = document.getElementById('sticky-mini-header'); if (el.scrollTop > 150) { miniHeader.classList.remove('opacity-0', 'pointer-events-none'); miniHeader.classList.add('opacity-100', 'pointer-events-auto'); } else { miniHeader.classList.add('opacity-0', 'pointer-events-none'); miniHeader.classList.remove('opacity-100', 'pointer-events-auto'); } }
         function closeModal(e) { if(e.target.id === 'result-modal') document.getElementById('result-modal').style.display='none'; }
         function closeModalBtn() { document.getElementById('result-modal').style.display='none'; }
         function downloadReport() { window.open(`/download_report?lat=${sLat}&lng=${sLng}&radius=${radius}&lang=${lang}`, '_blank'); }
