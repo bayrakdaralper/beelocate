@@ -231,12 +231,37 @@
             tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
-        function shareResult() {
+     function shareResult() {
             if(!currentData) return;
             const d = currentData.details;
+            
             const subject = `BeeLocate Analiz Raporu: ${currentData.score} Puan`;
-            const mapsLink = `https://www.google.com/maps?q=ENLEM,BOYLAM{sLat},${sLng}`;
-            const bodyText = `MERHABA,\n\nBeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:\n\n📍 KONUM BİLGİSİ\n---------------------\nKoordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}\nHaritada Gör: ${mapsLink}\n\n📊 ANALİZ ÖZETİ\n---------------------\n🏆 Skor: ${currentData.score}/100\n🌲 Flora Tipi: ${d.flora_type}\n💧 Suya Mesafe: ${d.d_water}m\n💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})\n☀️ Bakı: ${d.dir_tr}\n⛰️ Rakım: ${d.elevation}m\n\nBeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi\nwww.beelocatepro.com`;
+            
+            // DÜZELTİLEN KISIM: En Garantili Google Maps Link Yapısı
+            // Artık 'googleusercontent' gibi dolaylı yollar yok. Direkt koordinata gidiyoruz.
+            const mapsLink = `https://www.google.com/maps?q=${sLat},${sLng}`;
+
+            const bodyText = `MERHABA,
+BeeLocate PRO ile yaptığım yer seçimi analizi sonuçları aşağıdadır:
+
+📍 KONUM BİLGİSİ
+---------------------
+Koordinat: ${sLat.toFixed(5)}, ${sLng.toFixed(5)}
+Haritada Gör: ${mapsLink}
+
+📊 ANALİZ ÖZETİ
+---------------------
+🏆 Skor: ${currentData.score}/100
+🌲 Flora Tipi: ${d.flora_type}
+💧 Suya Mesafe: ${d.d_water}m
+💨 Rüzgar: ${d.avg_wind} km/h (${d.wind_dir})
+☀️ Bakı: ${d.dir_tr}
+⛰️ Rakım: ${d.elevation}m
+
+BeeLocate PRO - CBS Destekli Arıcılık Karar Destek Sistemi
+www.beelocatepro.com
+            `;
+            
             window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`, '_blank');
         }
 
