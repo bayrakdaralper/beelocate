@@ -1,7 +1,4 @@
-Flask
-Flask-Cors
+flask
+flask-cors
 requests
-fpdf
-matplotlib
-numpy
 gunicorn
