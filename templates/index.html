@@ -231,14 +231,14 @@
             tippy('[data-tippy-content]', { theme: 'custom', placement: 'bottom', animation: 'scale' });
         }
 
-     function shareResult() {
+   function shareResult() {
             if(!currentData) return;
             const d = currentData.details;
             
             const subject = `BeeLocate Analiz Raporu: ${currentData.score} Puan`;
             
-            // DÜZELTİLEN KISIM: En Garantili Google Maps Link Yapısı
-            // Artık 'googleusercontent' gibi dolaylı yollar yok. Direkt koordinata gidiyoruz.
+            // DÜZELTİLEN KISIM: Standart Google Maps Link Yapısı
+            // Artık süslü parantez hatası veya yönlendirme sorunu yok.
             const mapsLink = `https://www.google.com/maps?q=${sLat},${sLng}`;
 
             const bodyText = `MERHABA,
