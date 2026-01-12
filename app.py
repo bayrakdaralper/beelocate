@@ -4,148 +4,150 @@ import requests
 import logging
 import math
 import random
-import os
 from fpdf import FPDF
 
 app = Flask(__name__)
 CORS(app)
 
-# Türkçe Karakter Düzeltici
+# Türkçe karakter düzeltici
 def clean_tr(text):
     if not isinstance(text, str): return str(text)
     tr_map = str.maketrans("ğĞıİşŞçÇöÖüÜ", "gGiIsScCoOuU")
     return text.translate(tr_map)
 
-# --- 1. GERÇEK VERİ TOPLAMA ---
+# --- 1. GERÇEK OSM VERİSİ ---
 def get_osm_data(lat, lng, radius):
-    # Düzeltme: HTTP -> HTTPS ve User-Agent Eklendi
-    overpass_url = "https://overpass-api.de/api/interpreter"
-    
+    overpass_url = "http://overpass-api.de/api/interpreter"
+    # Timeout'u 45 saniyeye çıkardık ki veri gelmeden pes etmesin
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:45];
     (
       node["natural"="water"](around:{radius},{lat},{lng});
       way["natural"="water"](around:{radius},{lat},{lng});
+      
       node["landuse"="forest"](around:{radius},{lat},{lng});
       way["landuse"="forest"](around:{radius},{lat},{lng});
+      
       node["natural"="wood"](around:{radius},{lat},{lng});
       way["natural"="wood"](around:{radius},{lat},{lng});
+      
       node["highway"](around:{radius},{lat},{lng});
       way["highway"](around:{radius},{lat},{lng});
+      
       node["building"](around:{radius},{lat},{lng});
       way["building"](around:{radius},{lat},{lng});
     );
     out center;
     """
-    
-    # OSM'nin bot sanıp engellememesi için bu başlıklar şart
-    headers = {
-        'User-Agent': 'BeeLocatePro/1.0 (contact@beelocatepro.com)',
-        'Accept': '*/*'
-    }
-
     try:
-        r = requests.get(overpass_url, params={'data': query}, headers=headers, timeout=30)
+        r = requests.get(overpass_url, params={'data': query}, timeout=45)
         if r.status_code == 200:
             return r.json().get('elements', [])
-        else:
-            print(f"OSM API Hatası: {r.status_code}")
-            return []
-    except Exception as e:
-        print(f"OSM Bağlantı Hatası: {e}")
+        return []
+    except:
         return []
 
+# --- 2. GERÇEK HAVA DURUMU ---
 def get_weather_data(lat, lng):
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current_weather=true&elevation=true"
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=10)
         return r.json() if r.status_code == 200 else {}
     except:
         return {}
 
-# --- 2. PUANLAMA ALGORİTMASI ---
+# --- 3. ANALİZ MOTORU (Rastgelelik YOK) ---
 def calculate_score(lat, lng, radius, elements, weather):
-    # A. FLORA ANALİZİ
-    forest_count = sum(1 for e in elements if e.get('tags', {}).get('landuse') == 'forest' or e.get('tags', {}).get('natural') == 'wood')
+    # A. FLORA (Gerçek Sayım)
+    # Listede kaç tane orman/ağaçlık objesi varsa sayar.
+    forest_objects = [e for e in elements if e.get('tags', {}).get('landuse') == 'forest' or e.get('tags', {}).get('natural') == 'wood']
+    forest_count = len(forest_objects)
     
     if forest_count > 50:
         flora_score = 100
-        flora_type = "Zengin Orman / Nektar Alani"
+        flora_type = "Zengin Orman (Yogun)"
     elif forest_count > 10:
-        flora_score = 75
-        flora_type = "Orta Seviye Vejetasyon"
-    else:
+        flora_score = 70
+        flora_type = "Orta Seviye Flora"
+    elif forest_count > 0:
         flora_score = 40
-        flora_type = "Maki / Kirsal Alan"
-
-    # B. SU ANALİZİ
-    water_nodes = [e for e in elements if e.get('tags', {}).get('natural') == 'water']
-    if water_nodes:
-        min_dist_water = random.randint(100, 1500) # Veri varsa simüle mesafe (gerçek hesaplama yük bindirmesin diye)
-        water_score = 100
+        flora_type = "Seyrek Agaclik"
     else:
-        min_dist_water = 9999
-        water_score = 30
+        flora_score = 10
+        flora_type = "Yetersiz / Ciplak Arazi"
 
-    # C. RÜZGAR
-    wind_speed = weather.get('current_weather', {}).get('windspeed', 10)
+    # B. SU (Gerçek Varlık)
+    water_objects = [e for e in elements if e.get('tags', {}).get('natural') == 'water']
+    if len(water_objects) > 0:
+        # Su objesi bulunduysa tam puan
+        water_score = 100
+        water_dist_text = "< 2000m (Mevcut)"
+    else:
+        # Bulunamadıysa düşük puan
+        water_score = 20
+        water_dist_text = "Tespit Edilemedi"
+
+    # C. RÜZGAR (Gerçek Veri)
+    wind_speed = weather.get('current_weather', {}).get('windspeed', 0)
     wind_dir = weather.get('current_weather', {}).get('winddirection', 0)
     
-    if 5 <= wind_speed <= 25:
+    if 0 < wind_speed <= 25:
         wind_score = 100
-    elif wind_speed < 5:
-        wind_score = 80
+    elif wind_speed == 0:
+        wind_score = 50 # Veri yoksa veya rüzgar yoksa nötr
     else:
-        wind_score = 50
+        wind_score = 40 # Çok rüzgarlı
 
-    # D. DİĞER ETKENLER
-    elevation = weather.get('elevation', 800)
-    temp = weather.get('current_weather', {}).get('temperature', 20)
+    # D. DİĞER (Rakım, Bina, Yol)
+    elevation = weather.get('elevation', 0)
+    temp = weather.get('current_weather', {}).get('temperature', 0)
     
-    build_count = sum(1 for e in elements if e.get('tags', {}).get('building'))
-    build_score = max(0, 100 - (build_count * 2))
+    # Bina Sayısı
+    buildings = [e for e in elements if e.get('tags', {}).get('building')]
+    b_count = len(buildings)
+    build_score = max(0, 100 - (b_count * 2)) # Çok bina = Düşük puan
     
-    road_count = sum(1 for e in elements if e.get('tags', {}).get('highway'))
-    road_score = 100 if road_count > 0 else 40
-    road_dist = 500 if road_count > 0 else 5000
+    # Yol Varlığı
+    roads = [e for e in elements if e.get('tags', {}).get('highway')]
+    road_score = 100 if len(roads) > 0 else 30 # Yol yoksa ulaşım zor
 
-    # Simülasyon Değerleri (API limiti yememek için)
-    slope = random.randint(2, 15)
-    slope_score = 90
-    dirs = ["Kuzey", "Kuzeydogu", "Dogu", "Guneydogu", "Guney", "Guneybati", "Bati", "Kuzeybati"]
-    aspect = dirs[int((wind_dir/45)%8)]
-    aspect_score = 85
+    # Eğim (Basit Yaklaşım - API Hatasına karşı sabit nötr değer)
+    # Burada random kullanmıyoruz, herkese eşit 80 veriyoruz ki analiz sapmasın.
+    slope_score = 80 
+    slope_val = "Makul"
 
-    # SKORLAMA FORMÜLÜ
-    total = (flora_score * 0.35) + (water_score * 0.20) + (wind_score * 0.10) + \
-            (road_score * 0.10) + (build_score * 0.10) + (slope_score * 0.05) + \
-            (aspect_score * 0.05) + 5
+    # SKORLAMA (Ağırlıklı)
+    total = (flora_score * 0.40) + (water_score * 0.20) + (wind_score * 0.10) + \
+            (road_score * 0.10) + (build_score * 0.10) + (slope_score * 0.10)
 
-    total = min(99, int(total))
+    total = int(total)
+
+    # Yön Çeviri
+    dirs = ["Kuzey", "KD", "Dogu", "GD", "Guney", "GB", "Bati", "KB"]
+    aspect_txt = dirs[int((wind_dir/45)%8)]
 
     ai_text = f"""
-    <strong>Genel Degerlendirme:</strong> Bolge {total}/100 puan ile aricilik icin 
-    <strong>{'ÇOK UYGUN' if total > 75 else 'UYGUN'}</strong> seviyededir.<br><br>
-    - <strong>Flora:</strong> {flora_type} ({forest_count} veri noktasi)<br>
-    - <strong>Ruzgar:</strong> {wind_speed} km/h<br>
-    - <strong>Su:</strong> { "Kaynak mevcut" if water_score > 50 else "Su kaynagi uzak" }
+    <strong>Analiz Sonucu:</strong> {total}/100 Puan.<br>
+    <strong>Flora:</strong> {flora_type} ({forest_count} nokta).<br>
+    <strong>Su Durumu:</strong> {water_dist_text}.<br>
+    <strong>Ruzgar:</strong> {wind_speed} km/h.
     """
 
     return {
         "score": total,
         "ai_text": ai_text,
         "details": {
-            "flora_type": flora_type, "d_water": min_dist_water, "avg_wind": wind_speed,
-            "wind_dir": wind_dir, "d_road": road_dist, "b_count": build_count,
-            "s_val": slope, "dir_tr": aspect, "elevation": elevation, "avg_temp": temp, "avg_hum": 55
+            "flora_type": flora_type, "d_water": 0 if water_score==100 else 9999, 
+            "avg_wind": wind_speed, "wind_dir": wind_dir, "d_road": 0 if road_score==100 else 9999, 
+            "b_count": b_count, "s_val": 5, "dir_tr": aspect_txt, 
+            "elevation": elevation, "avg_temp": temp, "avg_hum": 50
         },
         "breakdown": {
             "Flora": flora_score, "Su": water_score, "Ruzgar": wind_score,
-            "Egim": slope_score, "Baki": aspect_score, "Ulasim": road_score, "Yerlesim": build_score
+            "Ulasim": road_score, "Baski": build_score
         }
     }
 
-# --- PDF MOTORU ---
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 20)
@@ -156,11 +158,10 @@ class PDF(FPDF):
         self.cell(0, 5, 'Fizibilite Raporu', 0, 1, 'C')
         self.ln(10)
 
-# --- ROTALAR ---
+# ROTALAR (Landing Page Düzeltmesi)
 @app.route('/')
 def landing():
-    return render_template('landing.html') # landing.html yoksa index.html döndür
-    # return render_template('index.html') # Eğer landing sayfanız yoksa bunu açın
+    return render_template('landing.html')
 
 @app.route('/app')
 def app_page():
@@ -170,20 +171,17 @@ def app_page():
 def analyze():
     try:
         d = request.json
-        # Verileri çek ve hesapla
-        osm_data = get_osm_data(d['lat'], d['lng'], d.get('radius', 2000))
-        weather_data = get_weather_data(d['lat'], d['lng'])
+        res = calculate_score(d['lat'], d['lng'], d.get('radius', 2000), 
+                              get_osm_data(d['lat'], d['lng'], d.get('radius', 2000)),
+                              get_weather_data(d['lat'], d['lng']))
         
-        res = calculate_score(d['lat'], d['lng'], d.get('radius', 2000), osm_data, weather_data)
-        
-        # Heatmap için rastgele varyasyon
+        # Sadece görsellik için heatmap (analize etkisi yok)
         res['heatmap'] = [{'lat': d['lat']+random.uniform(-0.01,0.01), 
                            'lng': d['lng']+random.uniform(-0.01,0.01), 
                            'val': random.randint(30,90)} for _ in range(20)]
         return jsonify(res)
-    except Exception as e:
-        print(f"HATA: {e}") # Konsola hatayı yazdır
-        return jsonify({"error": str(e)})
+    except:
+        return jsonify({"error": "Analiz servisi yanıt vermiyor."})
 
 @app.route('/download_report')
 def download_report():
@@ -208,12 +206,11 @@ def download_report():
         
         d = res['details']
         items = [
-            ("Flora Tipi", clean_tr(d['flora_type'])),
-            ("Suya Mesafe", f"{d['d_water']}m"),
-            ("Ruzgar Hizi", f"{d['avg_wind']} km/h"),
+            ("Flora", clean_tr(d['flora_type'])),
+            ("Ruzgar", f"{d['avg_wind']} km/h"),
             ("Rakim", f"{d['elevation']}m"),
-            ("Baki", clean_tr(d['dir_tr'])),
-            ("Yerlesim", f"{d['b_count']} bina")
+            ("Bina Sayisi", f"{d['b_count']}"),
+            ("Sicaklik", f"{d['avg_temp']} C")
         ]
         
         for k, v in items:
@@ -222,9 +219,6 @@ def download_report():
 
         pdf_name = f"BeeLocate_{lat}_{lng}.pdf"
         pdf_path = f"/tmp/{pdf_name}"
-        # Windows/Linux uyumu için tmp path kontrolü (isteğe bağlı)
-        if not os.path.exists('/tmp'): os.makedirs('/tmp', exist_ok=True)
-            
         pdf.output(pdf_path)
         return send_file(pdf_path, as_attachment=True)
 
