@@ -3388,6 +3388,10 @@ def buy_report(rid: str):
 
     # DEV / local testing: bypass Lemon and simulate a successful payment
     if os.environ.get("PAYMENTS_BYPASS", "").strip() == "1":
+        # Optional safety: protect the test "mark paid" route with a simple token.
+        # In production, set ADMIN_TOKEN and ALLOW_TEST_MARK_PAID=1 to enable the button.
+        admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
+        token_qs = ("?t=" + admin_token) if admin_token else ""
         return f"""
         <html><head><title>Test Checkout (BYPASS)</title></head>
         <body style='font-family:system-ui; padding:24px;'>
@@ -3458,10 +3462,20 @@ def buy_report(rid: str):
 @app.get("/test/mark-paid/<rid>")
 def test_mark_paid(rid: str):
     """DEV-only helper. Marks a report as paid and redirects to PDF download."""
-    # HARD GUARD: never allow this endpoint in production.
-    # Use FLASK_ENV=development or DEBUG=1 for local testing.
-    if not (app.debug or os.environ.get("FLASK_ENV","").lower() == "development" or os.environ.get("DEBUG","").strip() == "1"):
+    # HARD GUARD:
+    # - By default this route is disabled outside local dev.
+    # - For temporary production testing, set:
+    #     ALLOW_TEST_MARK_PAID=1
+    #   and (strongly recommended) set ADMIN_TOKEN, then open:
+    #     /test/mark-paid/<rid>?t=<ADMIN_TOKEN>
+    is_dev = (app.debug or os.environ.get("FLASK_ENV", "").lower() == "development" or os.environ.get("DEBUG", "").strip() == "1")
+    allow_prod_test = os.environ.get("ALLOW_TEST_MARK_PAID", "").strip() == "1"
+    if not (is_dev or allow_prod_test):
         return "Not found", 404
+    admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
+    if admin_token:
+        if request.args.get("t", "") != admin_token:
+            return "Forbidden", 403
     _paid_set(rid, provider="bypass", email="")
     return redirect(url_for("thank_you", rid=rid))
 
