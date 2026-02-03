@@ -33,6 +33,38 @@ GEE_ERR = ''
 def init_gee():
     global GEE_OK, GEE_ERR
     project = os.environ.get('EE_PROJECT', 'beelocatepro-ee')
+
+    # 1) Preferred (production): Service Account JSON via env
+    # Render/containers cannot run interactive auth or rely on gcloud.
+    sa_json = os.environ.get('GEE_SERVICE_ACCOUNT_JSON')
+    if sa_json:
+        try:
+            import json as _json
+            import tempfile as _tempfile
+            info = _json.loads(sa_json)
+            client_email = info.get('client_email')
+            project_id = info.get('project_id') or project
+            if not client_email:
+                raise ValueError('GEE_SERVICE_ACCOUNT_JSON missing client_email')
+
+            # Earth Engine expects a key *file*. We write the JSON into a temp file.
+            with _tempfile.NamedTemporaryFile('w+', suffix='.json', delete=False) as tf:
+                tf.write(sa_json)
+                tf.flush()
+                key_path = tf.name
+
+            credentials = ee.ServiceAccountCredentials(client_email, key_path)
+            ee.Initialize(credentials, project=project_id)
+            GEE_OK = True
+            GEE_ERR = ''
+            print(f'GEE: Service Account Auth OK (project={project_id})')
+            return
+        except Exception as e_sa:
+            GEE_OK = False
+            GEE_ERR = str(e_sa)
+            print(f"GEE Service Account Auth Failed: {e_sa}")
+
+    # 2) Fallback: attempt default project auth (works on machines with cached creds)
     try:
         ee.Initialize(project=project)
         GEE_OK = True
@@ -44,17 +76,22 @@ def init_gee():
         GEE_ERR = str(e)
         print(f"GEE Project Auth Failed: {e}")
 
-    # Fallback: interactive auth (local)
-    try:
-        ee.Authenticate()
-        ee.Initialize()
-        GEE_OK = True
-        GEE_ERR = ''
-        print("GEE: Default Auth OK")
-    except Exception as e2:
-        GEE_OK = False
-        GEE_ERR = str(e2)
-        print(f"GEE Critical: {e2}")
+    # 3) Last resort: interactive auth (LOCAL ONLY)
+    # Disable by default in server environments.
+    if os.environ.get('ALLOW_EE_INTERACTIVE', '0') == '1':
+        try:
+            ee.Authenticate()
+            ee.Initialize()
+            GEE_OK = True
+            GEE_ERR = ''
+            print("GEE: Default Auth OK")
+            return
+        except Exception as e2:
+            GEE_OK = False
+            GEE_ERR = str(e2)
+            print(f"GEE Critical: {e2}")
+    else:
+        print("GEE: Interactive auth disabled (set ALLOW_EE_INTERACTIVE=1 to enable locally)")
 
 
 init_gee()
