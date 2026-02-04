@@ -106,6 +106,7 @@ import subprocess
 import shutil
 import hashlib
 import hmac
+import urllib.parse
 from pathlib import Path
 
 # Optional: load .env automatically in local/dev
@@ -3409,9 +3410,13 @@ def buy_report(rid: str):
     if not (api_key and store_id and variant_id):
         return "Payment is not configured (missing LS_API_KEY / LS_STORE_ID / LS_VARIANT_ID).", 500
 
-    base_url = (os.environ.get("APP_BASE_URL") or "").strip() or request.url_root.rstrip("/")
-    # Never embed localhost URLs into hosted checkout return links.
-    if "127.0.0.1" in base_url or "localhost" in base_url:
+    # Lemon redirects the customer to these URLs after payment.
+    # If the checkout is created from localhost, Lemon will try to send the user back to localhost
+    # (and they'll see "127.0.0.1 refused to connect").
+    #
+    # Fix: allow forcing a public base URL via env.
+    base_url = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("APP_BASE_URL") or "").strip()
+    if not base_url:
         base_url = request.url_root.rstrip("/")
     test_mode = os.environ.get("LS_TEST_MODE", "1").strip() in ("1","true","True","yes","YES")
 
@@ -3530,10 +3535,20 @@ def lemonsqueezy_webhook():
         return "Invalid signature", 401
 
     event = request.headers.get("X-Event-Name", "") or request.headers.get("x-event-name", "")
+    # Parse from the already-captured raw body to avoid any stream/caching weirdness.
+    payload = None
     try:
-        # Parse from the already-captured raw body to avoid any stream/caching weirdness.
         payload = json.loads(raw.decode("utf-8") or "{}")
     except Exception:
+        # Some webhook proxies (or older tooling) may deliver: payload=<json> as form-encoded.
+        try:
+            decoded = raw.decode("utf-8", errors="ignore")
+            parsed = urllib.parse.parse_qs(decoded)
+            if "payload" in parsed and parsed["payload"]:
+                payload = json.loads(parsed["payload"][0] or "{}")
+        except Exception:
+            payload = None
+    if not isinstance(payload, dict):
         return "Invalid JSON", 400
 
     # Extract report_id from multiple possible locations (Lemon payloads vary by event/version).
