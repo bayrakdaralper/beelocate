@@ -3398,7 +3398,7 @@ def buy_report(rid: str):
           <h2>Test Checkout (BYPASS)</h2>
           <p>Report: <b>{rid}</b></p>
           <p>This simulates a successful payment.</p>
-          <p><a href='/test/mark-paid/{rid}' style='display:inline-block;padding:10px 14px;background:#111;color:#fff;border-radius:10px;text-decoration:none;'>Mark as Paid (TEST)</a></p>
+          <p><a href='/test/mark-paid/{rid}{token_qs}' style='display:inline-block;padding:10px 14px;background:#111;color:#fff;border-radius:10px;text-decoration:none;'>Mark as Paid (TEST)</a></p>
           <p><a href='/report/{rid}'>Back to report</a></p>
         </body></html>
         """
