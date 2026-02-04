@@ -1206,17 +1206,6 @@ def _paid_set(rid: str, provider: str, email: str = "") -> None:
         con.commit()
 
 
-def _paid_clear(rid: str) -> None:
-    """Remove paid state for a report (e.g., refund/chargeback)."""
-    if not rid:
-        return
-    _db_gc()
-    with _db() as con:
-        con.execute("DELETE FROM payments WHERE rid = ?", (rid,))
-        con.commit()
-
-
-
 def _is_paid(report_id: str) -> bool:
     _db_gc()
     with _db() as con:
@@ -3400,7 +3389,7 @@ def buy_report(rid: str):
     # DEV / local testing: bypass Lemon and simulate a successful payment
     if os.environ.get("PAYMENTS_BYPASS", "").strip() == "1":
         # Optional safety: protect the test "mark paid" route with a simple token.
-        # (Launch safety) Do not enable test payment flows in production.
+        # In production, set ADMIN_TOKEN and ALLOW_TEST_MARK_PAID=1 to enable the button.
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
         token_qs = ("?t=" + admin_token) if admin_token else ""
         return f"""
@@ -3420,7 +3409,10 @@ def buy_report(rid: str):
     if not (api_key and store_id and variant_id):
         return "Payment is not configured (missing LS_API_KEY / LS_STORE_ID / LS_VARIANT_ID).", 500
 
-    base_url = os.environ.get("APP_BASE_URL", request.url_root.rstrip("/"))
+    base_url = (os.environ.get("APP_BASE_URL") or "").strip() or request.url_root.rstrip("/")
+    # Never embed localhost URLs into hosted checkout return links.
+    if "127.0.0.1" in base_url or "localhost" in base_url:
+        base_url = request.url_root.rstrip("/")
     test_mode = os.environ.get("LS_TEST_MODE", "1").strip() in ("1","true","True","yes","YES")
 
     # Create a one-time checkout and attach report_id as custom data
@@ -3472,28 +3464,21 @@ def buy_report(rid: str):
 
 @app.get("/test/mark-paid/<rid>")
 def test_mark_paid(rid: str):
-    """DEV-only helper.
-
-    IMPORTANT (launch safety):
-    - This route must NEVER be usable in production.
-    - It is only allowed in local development AND only when PAYMENTS_BYPASS=1.
-    """
-    is_dev = (
-        app.debug
-        or os.environ.get("FLASK_ENV", "").lower() == "development"
-        or os.environ.get("DEBUG", "").strip() == "1"
-    )
-    payments_bypass = os.environ.get("PAYMENTS_BYPASS", "").strip() == "1"
-
-    # Production hard block
-    if not (is_dev and payments_bypass):
+    """DEV-only helper. Marks a report as paid and redirects to PDF download."""
+    # HARD GUARD:
+    # - By default this route is disabled outside local dev.
+    # - For temporary production testing, set:
+    #     ALLOW_TEST_MARK_PAID=1
+    #   and (strongly recommended) set ADMIN_TOKEN, then open:
+    #     /test/mark-paid/<rid>?t=<ADMIN_TOKEN>
+    is_dev = (app.debug or os.environ.get("FLASK_ENV", "").lower() == "development" or os.environ.get("DEBUG", "").strip() == "1")
+    allow_prod_test = os.environ.get("ALLOW_TEST_MARK_PAID", "").strip() == "1"
+    if not (is_dev or allow_prod_test):
         return "Not found", 404
-
-    # Optional token protection even in dev
     admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
-    if admin_token and request.args.get("t", "") != admin_token:
-        return "Forbidden", 403
-
+    if admin_token:
+        if request.args.get("t", "") != admin_token:
+            return "Forbidden", 403
     _paid_set(rid, provider="bypass", email="")
     return redirect(url_for("thank_you", rid=rid))
 
@@ -3501,17 +3486,7 @@ def test_mark_paid(rid: str):
 
 @app.get("/debug/routes")
 def debug_routes():
-    """DEV helper to list registered routes.
-
-    Launch safety: never expose route lists in production.
-    """
-    is_dev = (
-        app.debug
-        or os.environ.get("FLASK_ENV", "").lower() == "development"
-        or os.environ.get("DEBUG", "").strip() == "1"
-    )
-    if not is_dev:
-        return "Not found", 404
+    """DEV helper to list registered routes."""
     return "<pre>" + "\n".join(sorted([str(r) for r in app.url_map.iter_rules()])) + "</pre>"
 
 
@@ -3544,7 +3519,7 @@ def _verify_ls_signature(raw_body: bytes, signature: str, secret: str) -> bool:
 
 @app.route("/webhooks/lemonsqueezy", methods=["POST"])
 def lemonsqueezy_webhook():
-    secret = os.environ.get("LS_WEBHOOK_SECRET", "").strip()
+    secret = (os.environ.get("LS_WEBHOOK_SECRET") or os.environ.get("LEMON_WEBHOOK_SECRET") or "").strip()
     raw = request.get_data(cache=False)
     sig = request.headers.get("X-Signature", "") or request.headers.get("x-signature", "")
     if not _verify_ls_signature(raw, sig, secret):
@@ -3574,22 +3549,23 @@ def lemonsqueezy_webhook():
     except Exception:
         pass
 
-    if event in ("order_paid",) and rid:
-        # Mark report as paid ONLY when payment is confirmed.
+    if event in ("order_created", "license_key_created") and rid:
+        # Mark report as paid
         data_obj = payload.get("data", {}) if isinstance(payload, dict) else {}
         attrs = data_obj.get("attributes", {}) if isinstance(data_obj, dict) else {}
         email = attrs.get("user_email") or attrs.get("email") or ""
         _paid_set(rid, provider=event, email=email)
         return "OK", 200
 
-    if event in ("order_refunded", "order_payment_failed", "order_cancelled") and rid:
-        # Best-effort revoke access on refund/cancel/fail.
-        _paid_clear(rid)
-        return "OK", 200
-
     return "Ignored", 200
 
 
+
+
+# Alias endpoint kept for backwards/alternate Lemon settings.
+@app.route("/lemon/webhook", methods=["POST"])
+def lemon_webhook_alias():
+    return lemonsqueezy_webhook()
 
 @app.route("/report/<rid>")
 def report_by_id(rid: str):

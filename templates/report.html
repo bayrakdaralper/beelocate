@@ -68,7 +68,16 @@
             }
         }
     </style>
-{% if pdf_mode %}<style>{{ inline_css|safe }}</style>{% else %}<link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}">{% endif %}</head>
+{% if pdf_mode %}<style>{{ inline_css|safe }}</style>{% else %}<link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}">{% endif %}<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RB3NKEXE1Y');
+</script>
+</head>
 <body class="bg-background-light dark:bg-background-dark font-sans antialiased text-text-main-light dark:text-text-main-dark transition-colors duration-200 py-8 px-4">
 <main class="a4-page bg-paper-light dark:bg-paper-dark shadow-paper rounded-lg overflow-hidden flex flex-col relative">
 <header class="bg-anthracite text-white px-8 py-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-primary">
