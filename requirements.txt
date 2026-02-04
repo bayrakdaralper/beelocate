@@ -1,8 +1,0 @@
-flask
-earthengine-api
-requests
-python-dotenv
-
-openai>=1.40.0
-
-gunicorn==22.0.0
