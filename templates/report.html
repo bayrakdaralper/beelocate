@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>BeeLocate PRO - Location Suitability Report</title>
+{% if not pdf_mode %}
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+{% endif %}
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+{% if not pdf_mode %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+{% endif %}
+{% if not pdf_mode %}
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+{% endif %}
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#F59E0B", // Amber 500 for the 'Bee' theme
+              "primary-dark": "#D97706",
+              "background-light": "#F3F4F6", // Light gray background for the window
+              "background-dark": "#0F172A", // Dark slate for the window
+              "paper-light": "#FFFFFF", // White paper
+              "paper-dark": "#1E293B", // Darker paper
+              "text-main-light": "#111827",
+              "text-main-dark": "#F9FAFB",
+              "text-sub-light": "#4B5563",
+              "text-sub-dark": "#9CA3AF",
+              "anthracite": "#212121",
+            },
+            fontFamily: {
+              display: ["Inter", "sans-serif"],
+              sans: ["Inter", "sans-serif"],
+            },
+            borderRadius: {
+              DEFAULT: "0.5rem",
+            },
+            boxShadow: {
+              'paper': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0,0,0,0.05)',
+            }
+          },
+        },
+      };
+    </script>
+<style>.a4-page {
+            width: 100%;
+            max-width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+        }.gauge-circle {
+            transition: stroke-dasharray 1s ease-out;
+        }
+        @media print {
+            body {
+                background: white;
+            }
+            .a4-page {
+                box-shadow: none;
+                margin: 0;
+                width: 100%;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+{% if pdf_mode %}<style>{{ inline_css|safe }}</style>{% else %}<link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}">{% endif %}<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RB3NKEXE1Y');
+</script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-sans antialiased text-text-main-light dark:text-text-main-dark transition-colors duration-200 py-8 px-4">
+<main class="a4-page bg-paper-light dark:bg-paper-dark shadow-paper rounded-lg overflow-hidden flex flex-col relative">
+<header class="bg-anthracite text-white px-8 py-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-primary">
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<h1 class="text-2xl font-bold tracking-tight">BeeLocate <span class="text-primary font-black">PRO</span></h1>
+<span class="bg-primary/20 text-primary text-xs font-semibold px-2 py-1 rounded border border-primary/30">Location Suitability Report</span>
+</div>
+<p class="text-gray-400 text-sm font-light">Research-based decision support for beekeeping site assessment.</p>
+</div>
+<div class="mt-4 md:mt-0 text-right text-xs text-gray-400 leading-relaxed">
+<p><span class="font-medium text-gray-300">Date:</span> {{ date }}</p>
+<p><span class="font-medium text-gray-300">Location:</span> {{ lat }}, {{ lon }}</p>
+<p><span class="font-medium text-gray-300">Analysis window:</span> {{ analysis_window }}</p>
+{% if not pdf_mode and report_id %}
+  <div class="mt-3 no-print">
+    {% if is_paid %}
+      <a href="{{ url_for('report_pdf', rid=report_id) }}" class="inline-flex items-center gap-2 bg-primary text-black font-semibold px-3 py-2 rounded-md hover:bg-primary-dark transition">
+        <span class="material-icons-round text-base">download</span>
+        Download PDF
+      </a>
+      {% if paid_until %}
+        <p class="mt-2 text-[11px] text-gray-300">
+          Unlimited analyses are active for 24 hours.
+          <span>Expires in <b><span id="rptCountdown">--</span></b></span>
+          <span style="opacity:.75">(until <span id="rptExpiresAt">--</span>)</span>
+        </p>
+        <script>
+          (function(){
+            const paidUntil = {{ paid_until | float | int }};
+            const expiresDate = new Date(paidUntil*1000);
+            const elA = document.getElementById('rptExpiresAt');
+            if (elA) elA.textContent = expiresDate.toLocaleString();
+            const elC = document.getElementById('rptCountdown');
+            function fmt(ms){
+              const s = Math.max(0, Math.floor(ms/1000));
+              const h = Math.floor(s/3600);
+              const m = Math.floor((s%3600)/60);
+              const ss = s%60;
+              if (h>0) return `${h}h ${m}m`;
+              if (m>0) return `${m}m ${ss}s`;
+              return `${ss}s`;
+            }
+            function tick(){
+              const ms = paidUntil*1000 - Date.now();
+              if (elC) elC.textContent = fmt(ms);
+            }
+            tick();
+            setInterval(tick, 1000);
+          })();
+        </script>
+      {% endif %}
+    {% else %}
+      <a href="{{ buy_url }}" class="inline-flex items-center gap-2 bg-primary text-black font-semibold px-3 py-2 rounded-md hover:bg-primary-dark transition">
+        <span class="material-icons-round text-base">lock_open</span>
+        Unlock full report for {{ price_label }}
+      </a>
+      <p class="text-[11px] text-gray-400 mt-2">Preview only. Purchase unlocks the full PDF + unlimited analyses for today.</p>
+    {% endif %}
+  </div>
+{% endif %}
+</div>
+</header>
+<div class="p-8 md:p-10 flex-grow flex flex-col gap-8">
+<section class="grid grid-cols-1 md:grid-cols-12 gap-8">
+<div class="md:col-span-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl p-6 border border-gray-100 dark:border-slate-700 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-bl-full -mr-2 -mt-2"></div>
+<h2 class="text-sm font-semibold text-text-sub-light dark:text-text-sub-dark uppercase tracking-wider mb-4">Overall Suitability</h2>
+<div class="relative w-40 h-40">
+<svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+<path class="text-gray-200 dark:text-slate-700" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3"></path>
+<path class="text-primary gauge-circle" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="{{ score }}, 100" stroke-linecap="round" stroke-width="3"></path>
+</svg>
+<div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+<span class="text-4xl font-bold text-gray-900 dark:text-white">{{ score }}</span>
+<span class="text-sm text-gray-400 block font-medium">/ 100</span>
+</div>
+</div>
+<div class="mt-4">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-sm font-medium">
+{% if not pdf_mode %}<span class="material-icons-round text-sm">trending_up</span>{% endif %} {{ contextual_anchor }}
+                        </span>
+<p class="text-xs text-text-sub-light dark:text-text-sub-dark mt-2 leading-tight">{{ contextual_reference }}</p>
+</div>
+</div>
+<div class="md:col-span-8 flex flex-col justify-center">
+<div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm h-full">
+<h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+{% if not pdf_mode %}<span class="material-icons-round text-primary">psychology</span>{% endif %}
+                            Why this score? <span class="text-sm font-normal text-gray-500 dark:text-gray-400">(High-level)</span>
+</h3>
+<ul class="space-y-4">
+{% for p in why_points %}
+  <li class="flex items-start gap-3">
+    <span class="material-icons-round {% if loop.index0 < 2 %}text-green-500{% else %}text-amber-500{% endif %} mt-0.5">{% if loop.index0 < 2 %}check_circle{% else %}warning_amber{% endif %}</span>
+    <span class="text-text-sub-light dark:text-gray-300">{{ p }}</span>
+  </li>
+{% endfor %}
+</ul>
+</div>
+</div>
+</section>
+<section class="bg-blue-50 dark:bg-blue-900/10 border-l-4 border-blue-500 p-6 rounded-r-lg">
+<h3 class="text-sm font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wide mb-2 flex items-center gap-2">
+{% if not pdf_mode %}<span class="material-icons-round text-base">info</span>{% endif %} General Interpretation
+                </h3>
+<p class="text-gray-800 dark:text-gray-200 leading-relaxed text-sm">
+                    {{ general_comment }}</p>
+</section>
+
+<section class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+  <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+    {% if not pdf_mode %}<span class="material-icons-round text-primary">auto_awesome</span>{% endif %}
+    AI Insights <span class="text-sm font-normal text-gray-500 dark:text-gray-400">(Premium)</span>
+  </h3>
+
+  {% if pdf_mode or is_paid %}
+    {% if ai and (ai.verdict or ai.executive_summary) %}
+
+      {% if ai.verdict %}
+        <p class="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">{{ ai.verdict }}</p>
+      {% else %}
+        <p class="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">{{ ai.executive_summary }}</p>
+      {% endif %}
+
+      {% if ai.sections and ai.sections.forage %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Forage & Honey Potential</h4>
+            <p class="text-xs text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-line">{{ ai.sections.forage }}</p>
+          </div>
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Terrain & Placement Constraints</h4>
+            <p class="text-xs text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-line">{{ ai.sections.terrain }}</p>
+          </div>
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Climate & Flight Activity</h4>
+            <p class="text-xs text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-line">{{ ai.sections.climate }}</p>
+          </div>
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Access, Water & Human Pressure</h4>
+            <p class="text-xs text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-line">{{ ai.sections.access }}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Best use case</h4>
+            <ul class="text-xs text-gray-700 dark:text-gray-200 space-y-1 list-disc list-inside">
+              {% for b in (ai.best_use_case or []) %}<li>{{ b }}</li>{% endfor %}
+            </ul>
+          </div>
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Top 3 next checks on the ground</h4>
+            <ul class="text-xs text-gray-700 dark:text-gray-200 space-y-1 list-disc list-inside">
+              {% for b in (ai.next_checks or []) %}<li>{{ b }}</li>{% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% else %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Key drivers</h4>
+            <ul class="text-xs text-gray-700 dark:text-gray-200 space-y-1 list-disc list-inside">
+              {% for b in (ai.key_drivers or []) %}<li>{{ b }}</li>{% endfor %}
+            </ul>
+          </div>
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Risks</h4>
+            <ul class="text-xs text-gray-700 dark:text-gray-200 space-y-1 list-disc list-inside">
+              {% for b in (ai.risks or []) %}<li>{{ b }}</li>{% endfor %}
+            </ul>
+          </div>
+          <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Field checks</h4>
+            <ul class="text-xs text-gray-700 dark:text-gray-200 space-y-1 list-disc list-inside">
+              {% for b in (ai.field_checks or []) %}<li>{{ b }}</li>{% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% endif %}
+    {% else %}
+      {% if ai_status in ['pending','running'] %}
+        <div class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-200">
+          <span class="material-icons-round text-primary mt-0.5 animate-pulse">hourglass_top</span>
+          <div>
+            <div class="font-semibold">Preparing expert commentary…</div>
+            <div class="opacity-80">This usually takes 5–20 seconds. This page will refresh automatically when ready.</div>
+            {% if not pdf_mode %}
+              <div class="opacity-70 mt-2">Status: <span id="aiStatusText">{{ ai_status }}</span> • Elapsed: <span id="aiElapsed">0</span>s</div>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if not pdf_mode %}
+        <script>
+          (function(){
+            const rid = {{ report_id | tojson }};
+            let t = 0;
+            const elT = document.getElementById('aiElapsed');
+            const elS = document.getElementById('aiStatusText');
+            const tick = () => { t += 1; if(elT) elT.textContent = String(t); };
+            const poll = async () => {
+              try {
+                const r = await fetch(`/api/ai-status/${rid}`, {cache:'no-store'});
+                const j = await r.json();
+                if(elS && j && j.ai_status) elS.textContent = j.ai_status;
+                if(j && j.ai_status === 'done') {
+                  window.location.reload();
+                }
+              } catch(e) {}
+            };
+            setInterval(tick, 1000);
+            setInterval(poll, 2500);
+            setTimeout(poll, 500);
+          })();
+        </script>
+        {% endif %}
+
+      {% else %}
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          AI commentary is temporarily unavailable. The rest of the report remains valid.
+          <span class="opacity-80">Try refreshing this page or downloading the PDF again.</span>
+        </p>
+        {% if ai_error %}
+          <!-- ai_error: {{ ai_error }} -->
+        {% endif %}
+      {% endif %}
+    {% endif %}
+  {% else %}
+    <div class="relative overflow-hidden rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 p-4">
+      <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent dark:via-white/10 animate-pulse"></div>
+      <div class="relative">
+        <p class="text-sm text-gray-800 dark:text-gray-200 blur-sm select-none">
+          This premium section explains *why* the score looks this way, what is limiting, and what to validate on-site.
+        </p>
+        <ul class="mt-3 space-y-2 text-xs text-gray-700 dark:text-gray-200 blur-sm select-none">
+          <li>• Key drivers and limiting factors</li>
+          <li>• Risk profile for the selected season</li>
+          <li>• Practical field checklist before placing hives</li>
+        </ul>
+        <div class="mt-4">
+          <a href="{{ buy_url }}" class="inline-flex items-center gap-2 bg-primary text-black font-semibold px-3 py-2 rounded-md hover:bg-primary-dark transition">
+            <span class="material-icons-round text-base">lock_open</span>
+            Unlock AI insights + full PDF for {{ price_label }}
+          </a>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</section>
+<section class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+<h3 class="text-lg font-bold text-gray-900 dark:text-white mb-6 border-b border-gray-100 dark:border-slate-700 pb-3">Key Indicators <span class="text-sm font-normal text-gray-500">(Snapshot)</span></h3>
+<div class="space-y-3">
+{% set _klist = (kpis if (pdf_mode or is_paid) else (preview_kpis or [])) %}
+{% for k in _klist %}
+  <div class="flex items-center justify-between">
+    <span class="font-medium text-gray-700 dark:text-gray-300 text-sm">{{ k.label }}</span>
+    <span class="text-gray-400 font-mono text-sm">{{ k.value }}{% if k.unit %} {{ k.unit }}{% endif %}</span>
+  </div>
+{% endfor %}
+{% if (not pdf_mode) and (not is_paid) %}
+  <div class="mt-4 p-3 rounded-lg border border-dashed border-gray-300 dark:border-slate-600">
+    <p class="text-xs text-gray-600 dark:text-gray-300">+ {{ (locked_kpis|length) if locked_kpis is defined else 0 }} more indicators are locked in the full report.</p>
+  </div>
+{% endif %}
+</div>
+</div>
+<div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm flex flex-col">
+<h3 class="text-lg font-bold text-gray-900 dark:text-white mb-6 border-b border-gray-100 dark:border-slate-700 pb-3">Local Comparison</h3>
+<div class="flex-grow flex flex-col justify-center">
+<p class="text-sm text-text-sub-light dark:text-gray-400 mb-4 font-medium">Your location vs regional baseline (sampled)</p>
+<div class="relative h-6 bg-gray-100 dark:bg-gray-700 rounded-full mb-2 overflow-hidden">
+<div class="absolute left-0 top-0 h-full bg-primary" style="width: {{ bar_pct }}%;"></div>
+<div class="absolute top-0 bottom-0 w-1 bg-gray-800 dark:bg-white z-10" style="left: 56%"></div>
+</div>
+<div class="flex justify-between text-xs font-semibold mb-6">
+<span class="text-primary">Your score: {{ score }}</span>
+<span class="text-gray-500 dark:text-gray-400">Regional avg: {{ regional_avg }}</span>
+</div>
+<div class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-4">
+<p class="text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+<strong>Tip:</strong> If your score is above the baseline but the "why" points include a strong limiting factor (e.g., steep slope, low vegetation continuity), treat this as a "conditional yes" and validate on site.
+                            </p>
+</div>
+</div>
+</div>
+</section>
+  <section class="mt-8">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Detailed Card Breakdown</h2>
+    <p class="text-sm text-gray-600 dark:text-gray-300 mt-1">
+      This table lists the 14 analysis cards (value, source, and interpretation). {% if (not pdf_mode) and (not is_paid) %}<strong>Preview mode:</strong> most values are locked.{% endif %}
+    </p>
+
+    <div class="mt-4 overflow-hidden rounded-xl border border-gray-200 dark:border-white/10">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 dark:bg-white/5">
+          <tr>
+            <th class="text-left p-3 font-semibold text-gray-700 dark:text-gray-200">Card</th>
+            <th class="text-left p-3 font-semibold text-gray-700 dark:text-gray-200">Value</th>
+            <th class="text-left p-3 font-semibold text-gray-700 dark:text-gray-200">Source</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white dark:bg-transparent">
+          {% if pdf_mode or is_paid %}
+            {% for c in kpis %}
+          <tr class="border-t border-gray-200 dark:border-white/10">
+            <td class="p-3 align-top font-medium text-gray-900 dark:text-gray-100">{{ c.label }}</td>
+            <td class="p-3 align-top text-gray-700 dark:text-gray-200">
+              {{ c.value }}{% if c.unit %} {{ c.unit }}{% endif %}
+              {% if c.extra and c.extra|length > 0 %}
+                <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {% for e in c.extra %}<div>{{ e }}</div>{% endfor %}
+                </div>
+              {% endif %}
+            </td>
+            <td class="p-3 align-top text-gray-600 dark:text-gray-300">{{ c.source }}</td>
+          </tr>
+          <tr class="border-t border-gray-100 dark:border-white/5">
+            <td colspan="3" class="p-3 text-xs text-gray-600 dark:text-gray-300">
+              <span class="font-semibold">Why it matters:</span> {{ c.why }}<br/>
+              <span class="font-semibold">How BeeLocate uses it:</span> {{ c.how }}
+            </td>
+          </tr>
+            {% endfor %}
+          {% else %}
+            {# Preview rows (first 3) #}
+            {% for c in (preview_kpis or []) %}
+              <tr class="border-t border-gray-200 dark:border-white/10">
+                <td class="p-3 align-top font-medium text-gray-900 dark:text-gray-100">{{ c.label }}</td>
+                <td class="p-3 align-top text-gray-700 dark:text-gray-200">{{ c.value }}{% if c.unit %} {{ c.unit }}{% endif %}</td>
+                <td class="p-3 align-top text-gray-600 dark:text-gray-300">{{ c.source }}</td>
+              </tr>
+              <tr class="border-t border-gray-100 dark:border-white/5">
+                <td colspan="3" class="p-3 text-xs text-gray-600 dark:text-gray-300">
+                  <span class="font-semibold">Why it matters:</span> {{ c.why }}<br/>
+                  <span class="font-semibold">How BeeLocate uses it:</span> {{ c.how }}
+                </td>
+              </tr>
+            {% endfor %}
+
+            {# Locked rows (blurred placeholders; no real values are sent) #}
+            {% for c in (locked_kpis or []) %}
+              <tr class="border-t border-gray-200 dark:border-white/10">
+                <td class="p-3 align-top font-medium text-gray-900 dark:text-gray-100">{{ c.label }}</td>
+                <td class="p-3 align-top text-gray-700 dark:text-gray-200">
+                  <div class="relative inline-flex items-center gap-2">
+                    <span class="px-2 py-1 rounded bg-gray-100 dark:bg-white/10 text-gray-500">Locked</span>
+                    <span class="text-xs text-gray-500">(unlock to view)</span>
+                    <span class="ml-2 text-gray-300 select-none">••••••••</span>
+                  </div>
+                </td>
+                <td class="p-3 align-top text-gray-600 dark:text-gray-300">{{ c.source }}</td>
+              </tr>
+              <tr class="border-t border-gray-100 dark:border-white/5">
+                <td colspan="3" class="p-3 text-xs text-gray-600 dark:text-gray-300">
+                  <span class="font-semibold">Why it matters:</span> {{ c.why }}<br/>
+                  <span class="font-semibold">How BeeLocate uses it:</span> {{ c.how }}
+                </td>
+              </tr>
+            {% endfor %}
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+<footer class="bg-gray-50 dark:bg-slate-900/50 p-8 border-t border-gray-200 dark:border-slate-700 mt-auto">
+<div class="text-[10px] text-gray-500 dark:text-gray-400 space-y-2 leading-normal">
+<p><strong class="text-gray-700 dark:text-gray-300">Methodology note:</strong> {{ methodology_note }}</p>
+<p><strong class="text-gray-700 dark:text-gray-300">Legal disclaimer:</strong> {{ legal_disclaimer }}</p>
+</div>
+<div class="mt-4 flex justify-between items-center text-[10px] text-gray-400 uppercase tracking-widest">
+<span>BeeLocate PRO v2.1</span>
+<span>Page 1 of 1</span>
+</div>
+</footer>
+</main>
+<div class="text-center mt-6 text-gray-500 text-sm no-print">
+<p>Preview Mode • Optimized for A4 Printing</p>
+</div>
+
+</body></html>

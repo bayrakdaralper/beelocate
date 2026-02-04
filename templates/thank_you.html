@@ -1,0 +1,161 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>BeeLocate PRO • Thank you</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;background:#0b0b0f;color:#fff;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;}
+    .card{max-width:640px;padding:28px 24px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:16px}
+    a.btn{display:inline-block;margin-top:16px;background:#fbbf24;color:#000;padding:10px 14px;border-radius:12px;text-decoration:none;font-weight:700}
+    .muted{color:rgba(255,255,255,0.75);font-size:14px;line-height:1.4}
+    code{background:rgba(0,0,0,0.35);padding:2px 6px;border-radius:8px}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+    .overlay.show{display:flex}
+    .modal{max-width:520px;width:100%;background:rgba(20,20,26,.95);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:18px 18px 16px}
+    .row{display:flex;align-items:center;gap:12px}
+    .spinner{width:18px;height:18px;border-radius:999px;border:2px solid rgba(255,255,255,.25);border-top-color:#fbbf24;animation:spin .9s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .small{font-size:13px;color:rgba(255,255,255,.78);line-height:1.45}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+  </style>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RB3NKEXE1Y');
+</script>
+</head>
+<body>
+  <div class="card">
+    <h2>Payment received</h2>
+    <p class="muted">Thanks — your order is being confirmed. Your report is now unlocked.</p>
+    {% if paid_until %}
+      <p class="muted">✅ Unlimited analyses are active for <b>24 hours</b>.</p>
+      <p class="muted">Expires in <b><span id="countdown">--</span></b> <span style="opacity:.7">(until <span id="expiresAt">--</span>)</span></p>
+      <script>
+        (function(){
+          const paidUntil = {{ paid_until | float | int }};
+          function fmt(ms){
+            const s = Math.max(0, Math.floor(ms/1000));
+            const h = Math.floor(s/3600);
+            const m = Math.floor((s%3600)/60);
+            const ss = s%60;
+            if(h>0) return `${h}h ${m}m`;
+            if(m>0) return `${m}m ${ss}s`;
+            return `${ss}s`;
+          }
+          const expiresDate = new Date(paidUntil*1000);
+          const expiresAtEl = document.getElementById('expiresAt');
+          if(expiresAtEl) expiresAtEl.textContent = expiresDate.toLocaleString();
+          const el = document.getElementById('countdown');
+          function tick(){
+            const ms = paidUntil*1000 - Date.now();
+            if(el) el.textContent = fmt(ms);
+          }
+          tick();
+          setInterval(tick, 1000);
+        })();
+      </script>
+    {% else %}
+      <p class="muted">✅ Unlimited analyses are active for <b>24 hours</b> from purchase.</p>
+    {% endif %}
+    {% if report_id %}
+      <p class="muted">Report ID: <code>{{ report_id }}</code></p>
+      <a class="btn" id="goReport" href="/report/{{ report_id }}">Go to report</a>
+    {% else %}
+      <a class="btn" href="/">Back to app</a>
+    {% endif %}
+  </div>
+
+  {% if report_id %}
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <div class="row">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <div style="font-weight:800">Preparing your report…</div>
+          <div class="small">We’re finalizing premium commentary in the background. This usually takes a few seconds.</div>
+        </div>
+      </div>
+      <div class="small" style="margin-top:10px">
+        Status: <span class="mono" id="aiStatus">checking…</span> · Elapsed: <span class="mono" id="elapsed">0</span>s
+      </div>
+      <div class="small" style="margin-top:8px;opacity:.85">
+        If it takes longer, don’t worry — the report will open and refresh when the commentary is ready.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if report_id and paid_until %}
+  <script>
+    // Set local unlock window (MVP). Backend remains source-of-truth for paid PDF.
+    try {
+      localStorage.setItem('blp_unlimited_until', String({{ paid_until | float }} * 1000));
+      localStorage.setItem('blp_last_report_id', {{ report_id | tojson }});
+    } catch (e) {}
+  </script>
+  {% endif %}
+
+  {% if report_id %}
+  <script>
+    (function(){
+      const btn = document.getElementById('goReport');
+      const overlay = document.getElementById('overlay');
+      const elS = document.getElementById('aiStatus');
+      const elE = document.getElementById('elapsed');
+      if(!btn || !overlay) return;
+      const rid = {{ report_id | tojson }};
+      let t = 0;
+      const tick = () => { t += 1; if(elE) elE.textContent = String(t); };
+      let paid = false;
+      const poll = async () => {
+        try {
+          const r = await fetch(`/api/ai-status/${rid}`, {cache:'no-store'});
+          const j = await r.json();
+          if(elS && j && j.ai_status) elS.textContent = j.ai_status;
+          if(j && typeof j.paid === 'boolean') paid = j.paid;
+        } catch(e) {}
+      };
+
+      btn.addEventListener('click', function(ev){
+        // Show a reassuring progress modal before navigation.
+        overlay.classList.add('show');
+        btn.setAttribute('aria-disabled', 'true');
+        btn.style.pointerEvents = 'none';
+        ev.preventDefault();
+
+        // We don't trust the success URL. We only proceed when the backend
+        // confirms "paid" (i.e., webhook processed and DB updated).
+        poll();
+        setInterval(tick, 1000);
+        const pollTimer = setInterval(poll, 2000);
+
+        const start = Date.now();
+        const gate = setInterval(() => {
+          if(paid){
+            clearInterval(gate);
+            clearInterval(pollTimer);
+            window.location.href = btn.getAttribute('href');
+            return;
+          }
+          // Safety timeout: keep the user on this page if webhook is delayed.
+          if(Date.now() - start > 120000){
+            clearInterval(gate);
+            // Re-enable the button so user can retry.
+            btn.removeAttribute('aria-disabled');
+            btn.style.pointerEvents = 'auto';
+            overlay.classList.remove('show');
+          }
+        }, 500);
+      });
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>

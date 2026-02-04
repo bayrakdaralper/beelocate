@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
+    <title>BeeLocate PRO v3.9</title>
+    <script>window.MAPBOX_TOKEN = "{{ mapbox_token|default('') }}";</script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+
+    <script src="{{ url_for('static', filename='js/tailwind-config.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RB3NKEXE1Y');
+</script>
+</head>
+
+<body class="bg-bg-dark text-white font-display app-layout">
+
+    <div
+        class="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 md:w-[600px] z-20 flex flex-col gap-3 pointer-events-none">
+        <div class="flex justify-between items-center px-2 pointer-events-auto">
+            <a href="/"
+                class="flex items-center gap-2 drop-shadow-md bg-black/60 px-4 py-2 rounded-full backdrop-blur cursor-pointer border border-white/10 hover:bg-black/80 transition group">
+                <span
+                    class="material-symbols-outlined text-primary text-3xl group-hover:scale-110 transition">hive</span>
+                <h1 class="text-xl font-bold tracking-tight">BeeLocate <span class="text-primary">PRO</span></h1>
+            </a>
+            <div class="flex items-center gap-2">
+                <a href="/my"
+                    class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-white/10 hover:border-white/20 transition text-gray-300 group"
+                    data-tippy-content="My reports">
+                    <span class="material-symbols-outlined text-xl group-active:scale-90 transition">history</span>
+                </a>
+                <a href="mailto:info@beelocatepro.com?subject=BeeLocate%20PRO%20-%20Contact"
+                    class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300 group"
+                    data-tippy-content="Contact">
+                    <span class="material-symbols-outlined text-xl group-active:scale-90 transition">mail</span>
+                </a>
+
+                <div
+                    class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-9 items-center hidden">
+                    <button onclick="setLang('TR')" id="btn-tr"
+                        class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
+                    <button onclick="setLang('EN')" id="btn-en"
+                        class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
+                </div>
+                <div class="bg-black/60 backdrop-blur-md rounded-full px-2 py-1 border border-white/10 flex shadow-lg h-9 items-center">
+                    <span class="material-symbols-outlined text-white/70 mr-1" style="font-size:18px;">layers</span>
+                    <select id="basemap-selector" onchange="setBasemap(this.value)"
+                        class="bg-transparent text-xs font-semibold text-white/80 outline-none">
+                        <option value="mapbox_sat_labels">Satellite + Labels (Mapbox)</option>
+                        <option value="mapbox_sat">Satellite (Mapbox)</option>
+                        <option value="mapbox_streets">Map (Mapbox)</option>
+                        <option value="osm">Map (OSM fallback)</option>
+                    </select>
+                </div>
+
+                <div class="bg-black/60 backdrop-blur-md rounded-full px-3 py-1 border border-white/10 flex shadow-lg h-9 items-center ml-2">
+                    <span class="material-symbols-outlined text-white/70 mr-1" style="font-size:18px;">label</span>
+                    <label class="text-xs font-semibold text-white/80 select-none flex items-center gap-2">
+                        <span class="hidden sm:inline">Labels</span>
+                        <input id="labels-toggle" type="checkbox" checked onchange="setLabels(this.checked)"
+                            class="accent-yellow-400 w-4 h-4">
+                    </label>
+                </div>
+
+
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="fixed bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-3 w-[95%] max-w-sm px-0"
+        id="analyze-container">
+        <div
+            class="bg-black/80 backdrop-blur-md p-4 rounded-2xl border border-white/10 w-full animate-fade-in-up space-y-4 shadow-2xl">
+            <div
+                class="flex items-center bg-white/10 rounded-xl px-3 h-10 border border-white/5 focus-within:border-primary transition">
+                <span class="material-symbols-outlined text-gray-400 text-lg">search</span>
+                <input id="search-input"
+                    class="bg-transparent border-none text-white text-sm w-full ml-2 focus:outline-none placeholder-gray-500"
+                    placeholder="Search location... (e.g., Sarıcakaya)" onkeypress="handleSearch(event)">
+            </div>
+            <div>
+                <div class="flex justify-between text-[10px] text-gray-400 mb-2 font-bold uppercase tracking-wider">
+                    <span id="lbl-rad">Scan radius (buffer)</span>
+                    <span class="text-primary" id="rad-val">2000m</span>
+                </div>
+                <input type="range" id="radius-slider" min="1000" max="5000" step="500" value="2000"
+                    oninput="updateRadius(this.value)" class="w-full">
+                <input type="hidden" id="lat" value="">
+                <input type="hidden" id="lng" value="">
+                <input type="hidden" id="rad" value="2000">
+            </div>
+        </div>
+        <button onclick="startAnalysis()"
+            class="flex items-center justify-center gap-3 h-14 w-full bg-primary hover:bg-primary-hover text-[#181610] rounded-2xl shadow-xl transform transition active:scale-95 animate-fade-in-up font-bold text-lg"
+            style="animation-delay: 0.1s;">
+            <span class="material-symbols-outlined text-2xl">query_stats</span>
+            <span id="btn-analyze-text">RUN ANALYSIS</span>
+        </button>
+    </div>
+
+    <!-- Loading Screen -->
+    <!-- Loading Screen (RETRO MATRIX) -->
+    <div id="loading-screen" class="fixed inset-0 bg-black z-50 hidden flex-col items-center justify-center font-mono">
+        <div class="text-green-500 text-6xl font-black mb-6 tracking-tighter" id="loading-percent">%0</div>
+
+        <div class="w-64 h-1.5 bg-gray-900 rounded-full overflow-hidden mb-6 border border-green-900/50">
+            <div id="loading-bar" class="h-full bg-green-500 w-0 transition-all duration-200"></div>
+        </div>
+
+        <div class="space-y-1 text-center">
+            <div id="loading-text" class="text-green-400 text-xs font-bold uppercase tracking-widest animate-pulse">
+                SİSTEM BAŞLATILIYOR...
+            </div>
+            <div class="text-[10px] text-green-700/60" id="loading-sub">
+                BeeLocate Terminal v4.2
+            </div>
+        </div>
+    </div>
+
+    <!-- Result Modal -->
+    <div id="result-modal"
+        class="fixed inset-0 z-40 hidden flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm"
+        onclick="closeModal(event)">
+        <div id="modal-content"
+            class="bg-[#1e1e1e] w-full md:w-full md:max-w-7xl md:rounded-3xl rounded-t-3xl border-t md:border border-white/10 shadow-2xl h-[85vh] md:h-[800px] relative slide-up overflow-hidden"
+            onclick="event.stopPropagation()">
+
+            <div id="sticky-mini-header"
+                class="sticky top-0 z-50 bg-[#1e1e1e]/95 backdrop-blur-md border-b border-white/10 px-6 py-4 flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <div class="bg-primary/20 p-2 rounded-lg">
+                        <span class="material-symbols-outlined text-primary">analytics</span>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 font-bold uppercase tracking-wider">OVERALL SCORE</div>
+                        <div class="flex items-end gap-2">
+                            <span class="text-2xl font-bold text-white leading-none" id="mini-score-val">--</span>
+                            <span class="text-sm font-medium text-gray-400 mb-0.5" id="mini-score-comment">--</span>
+                        </div>
+                        <div class="text-[11px] text-gray-500 mt-1" id="mini-coords">--</div>
+                    </div>
+                </div>
+
+                <!-- Month Selector (Simulation Mode) -->
+                <div class="flex items-center gap-3">
+                    <div id="simulation-title"
+                        class="hidden md:block text-[10px] uppercase font-bold text-primary tracking-wider mr-2 animate-pulse">
+                        <!-- JS Injected Title -->
+                    </div>
+                    <label class="text-[10px] uppercase font-bold text-gray-500 tracking-wider hidden md:block">Analiz
+                        Dönemi:</label>
+                    <select id="month-selector" onchange="updateMonth(this.value)"
+                        class="bg-black/40 border border-white/10 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-primary/50 transition cursor-pointer">
+                        <option value="season" selected>🌿 RECOMMENDED SEASON (Fenoloji)</option>
+                        <option value="current">⚡ CANLI / ŞU AN</option>
+                        <option value="1">OCAK (Simülasyon)</option>
+                        <option value="2">ŞUBAT (Simülasyon)</option>
+                        <option value="3">MART (Simülasyon)</option>
+                        <option value="4">NİSAN (Simülasyon)</option>
+                        <option value="5">MAYIS (Simülasyon)</option>
+                        <option value="6">HAZİRAN (Simülasyon)</option>
+                        <option value="7">TEMMUZ (Simülasyon)</option>
+                        <option value="8">AĞUSTOS (Simülasyon)</option>
+                        <option value="9">EYLÜL (Simülasyon)</option>
+                        <option value="10">EKİM (Simülasyon)</option>
+                        <option value="11">KASIM (Simülasyon)</option>
+                        <option value="12">ARALIK (Simülasyon)</option>
+                    </select>
+
+                    <button id="water-managed-btn" type="button" aria-pressed="false" onclick="toggleWaterManaged()"
+                        class="group inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition text-xs font-bold text-gray-300">
+                        <span class="material-symbols-outlined text-base text-primary group-aria-[pressed=true]:text-yellow-300">water_drop</span>
+                        <span id="water-managed-label">Managed Water</span>
+                    </button>
+
+                    <button onclick="closeModal()"
+                        class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-6 md:p-8 space-y-8 overflow-y-auto h-[calc(100%-80px)]">
+
+                <!-- Main Score & Actions (Shown Once at Top) -->
+                <div class="flex flex-col md:flex-row gap-6 mb-2">
+                    <div
+                        class="flex-1 bg-white/5 p-6 rounded-2xl border border-white/5 flex items-center justify-between">
+                        <div>
+                            <div class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">ARAZİ UYGUNLUK
+                                PUANI</div>
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-6xl font-black text-primary" id="score-val">0</span>
+                                <span class="text-xl text-gray-500 font-bold">/100</span>
+                            </div>
+                            <div class="text-green-400 font-bold mt-1" id="score-comment">--</div>
+                            <div class="text-xs text-gray-500 mt-2" id="main-coords">--</div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="downloadReport()"
+                                class="bg-white/10 hover:bg-white/20 text-white p-3 rounded-xl transition"><span
+                                    class="material-symbols-outlined">download</span></button>
+                            <button onclick="shareResult()"
+                                class="bg-white/10 hover:bg-white/20 text-white p-3 rounded-xl transition"><span
+                                    class="material-symbols-outlined">share</span></button>
+                        </div>
+                    </div>
+                    <div class="flex-1 bg-white/5 p-6 rounded-2xl border border-white/5 flex items-center">
+                        <div class="w-full">
+                            <div id="sys-title" class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-3">SUMMARY</div>
+                            <div class="prose prose-invert prose-sm text-sm text-gray-300 leading-snug"
+                                id="dynamic-text">
+                                ...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Grid (Compact 4-Cols) -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4" id="metrics-grid">
+                    <!-- JS Injected Content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}?v={{ range(1, 10000) | random }}"></script>
+
+<div id="unlimitedBadge" style="display:none; position:fixed; top:16px; right:16px; z-index:9999;
+  padding:8px 12px; border-radius:999px; background:rgba(0,0,0,0.55); color:#fff; font:600 13px system-ui;
+  border:1px solid rgba(255,255,255,0.14); backdrop-filter: blur(8px);">
+  🔓 Unlimited active • <span id="unlimitedCountdown">--</span>
+</div>
+
+</body>
+
+</html>

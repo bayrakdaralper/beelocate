@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>My Reports - BeeLocate PRO</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700&display=swap" rel="stylesheet" />
+  <script src="{{ url_for('static', filename='js/tailwind-config.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    /* keep it readable on white cards */
+    .card { background: rgba(255,255,255,0.06); }
+  </style>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RB3NKEXE1Y');
+</script>
+</head>
+
+<body class="bg-bg-dark text-white font-display min-h-screen">
+  <div class="max-w-5xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <a href="/" class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary" style="font-size:32px;">hive</span>
+        <div class="text-xl font-extrabold">BeeLocate <span class="text-primary">PRO</span></div>
+      </a>
+      <a href="/" class="text-sm text-white/70 hover:text-white">Back to map</a>
+    </div>
+
+    <div class="rounded-2xl border border-white/10 p-5 bg-black/50 backdrop-blur">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-bold">My Reports</h1>
+          <p class="text-sm text-white/70 mt-1">
+            This list is tied to your current browser/device (MVP). For now, it’s the fastest way to re-open and re-download your paid reports.
+          </p>
+        </div>
+        <button id="btn-refresh" class="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-sm">Refresh</button>
+      </div>
+
+      <div id="status" class="text-sm text-white/70 mt-4">Loading...</div>
+
+      <div id="list" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
+
+      <div id="empty" class="hidden mt-6 p-5 rounded-2xl border border-white/10 bg-white/5">
+        <div class="font-semibold">No reports yet.</div>
+        <div class="text-sm text-white/70 mt-1">Run an analysis on the map to generate your first report.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Minimal UID reader (mirrors main app)
+    function _getCookie(name) {
+      const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+      return m ? decodeURIComponent(m[2]) : '';
+    }
+    const uid = (_getCookie('blp_uid') || '').trim();
+
+    function fmtDate(ts) {
+      if (!ts) return '—';
+      const d = new Date(ts * 1000);
+      return d.toLocaleString();
+    }
+    function fmtScore(s) {
+      const n = Number(s);
+      return Number.isFinite(n) ? n.toFixed(0) : '—';
+    }
+
+    function card(item) {
+      const paid = item.paid ? 'Paid' : 'Free';
+      const paidBadge = item.paid ? 'bg-green-500/20 text-green-200 border-green-500/20' : 'bg-white/10 text-white/70 border-white/10';
+      const score = fmtScore(item.score);
+      const coords = (Number.isFinite(item.lat) && Number.isFinite(item.lon)) ? `${item.lat.toFixed(5)}, ${item.lon.toFixed(5)}` : '—';
+      const viewUrl = `/report/${item.rid}`;
+      const pdfUrl = `/report/${item.rid}.pdf`;
+
+      return `
+        <div class="card rounded-2xl border border-white/10 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-sm text-white/70">Report</div>
+            <span class="text-xs px-2 py-1 rounded-full border ${paidBadge}">${paid}</span>
+          </div>
+          <div class="mt-2 flex items-end justify-between">
+            <div>
+              <div class="text-3xl font-extrabold">${score}<span class="text-white/40 text-base">/100</span></div>
+              <div class="text-xs text-white/70 mt-1">${coords}</div>
+              <div class="text-xs text-white/50 mt-1">${fmtDate(item.created_at)}</div>
+            </div>
+            <div class="text-xs text-white/40">${item.rid.slice(0,8)}</div>
+          </div>
+
+          <div class="mt-4 flex flex-wrap gap-2">
+            <a href="${viewUrl}" class="px-3 py-2 rounded-xl bg-primary text-black font-semibold text-sm">View report</a>
+            ${item.paid ? `<a href="${pdfUrl}" class="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-sm">Download PDF</a>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    async function load() {
+      const status = document.getElementById('status');
+      const list = document.getElementById('list');
+      const empty = document.getElementById('empty');
+
+      if (!uid) {
+        status.textContent = 'No device ID found yet. Run one analysis first.';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      status.textContent = 'Loading your reports…';
+      list.innerHTML = '';
+      empty.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/my-reports', { headers: { 'Accept': 'application/json' } });
+        const data = await res.json();
+        // Backward/forward compatibility: API may return either "items" or "reports"
+        const items = data.items || data.reports || [];
+        status.textContent = items.length ? `Showing ${items.length} report(s).` : 'No reports found.';
+        if (!items.length) {
+          empty.classList.remove('hidden');
+          return;
+        }
+        list.innerHTML = items.map(card).join('');
+      } catch(e) {
+        console.error(e);
+        status.textContent = 'Failed to load reports.';
+      }
+    }
+
+    document.getElementById('btn-refresh').addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>
