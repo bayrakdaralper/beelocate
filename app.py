@@ -3563,9 +3563,6 @@ def lemonsqueezy_webhook():
 
 
 # Alias endpoint kept for backwards/alternate Lemon settings.
-@app.route("/lemon/webhook", methods=["POST"])
-def lemon_webhook_alias():
-    return lemonsqueezy_webhook()
 
 @app.route("/report/<rid>")
 def report_by_id(rid: str):
@@ -3854,3 +3851,45 @@ def analyze():
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
+
+
+# =========================
+# LEMON SQUEEZY WEBHOOK FIX
+# =========================
+import json
+
+@app.route("/lemon/webhook", methods=["POST"])
+def lemon_webhook():
+    raw = request.get_data(as_text=True)
+    try:
+        payload = json.loads(raw)
+    except Exception as e:
+        return jsonify({"error": "invalid json", "detail": str(e)}), 400
+
+    event = payload.get("meta", {}).get("event_name")
+    attrs = payload.get("data", {}).get("attributes", {})
+    status = attrs.get("status")
+    report_id = payload.get("meta", {}).get("custom_data", {}).get("report_id")
+    order_id = payload.get("data", {}).get("id")
+    user_email = attrs.get("user_email")
+
+    if event == "order_created" and status == "paid" and report_id:
+        con = sqlite3.connect(DB_PATH)
+        cur = con.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS paid_reports (
+                report_id TEXT PRIMARY KEY,
+                order_id TEXT,
+                user_email TEXT,
+                status TEXT
+            )
+        """)
+        cur.execute("""
+            INSERT OR REPLACE INTO paid_reports
+            (report_id, order_id, user_email, status)
+            VALUES (?, ?, ?, ?)
+        """, (report_id, order_id, user_email, "paid"))
+        con.commit()
+        con.close()
+
+    return jsonify({"ok": True}), 200
