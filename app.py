@@ -3856,10 +3856,13 @@ if __name__ == "__main__":
 # =========================
 # LEMON SQUEEZY WEBHOOK FIX
 # =========================
-import json
+# Fixes: "Invalid JSON" + ensures paid status is recorded in the SAME table used by _is_paid()
+# Table used by app: payments(rid, paid_at, provider, email)
+import json, time
 
 @app.route("/lemon/webhook", methods=["POST"])
 def lemon_webhook():
+    # 1) Always parse from RAW body (Lemon may send application/vnd.api+json)
     raw = request.get_data(as_text=True)
     try:
         payload = json.loads(raw)
@@ -3867,29 +3870,21 @@ def lemon_webhook():
         return jsonify({"error": "invalid json", "detail": str(e)}), 400
 
     event = payload.get("meta", {}).get("event_name")
-    attrs = payload.get("data", {}).get("attributes", {})
-    status = attrs.get("status")
-    report_id = payload.get("meta", {}).get("custom_data", {}).get("report_id")
-    order_id = payload.get("data", {}).get("id")
-    user_email = attrs.get("user_email")
+    attrs = (payload.get("data", {}) or {}).get("attributes", {}) or {}
 
-    if event == "order_created" and status == "paid" and report_id:
-        con = sqlite3.connect(DB_PATH)
-        cur = con.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS paid_reports (
-                report_id TEXT PRIMARY KEY,
-                order_id TEXT,
-                user_email TEXT,
-                status TEXT
-            )
-        """)
-        cur.execute("""
-            INSERT OR REPLACE INTO paid_reports
-            (report_id, order_id, user_email, status)
-            VALUES (?, ?, ?, ?)
-        """, (report_id, order_id, user_email, "paid"))
-        con.commit()
-        con.close()
+    # 2) Only act on successful paid orders
+    if event == "order_created" and attrs.get("status") == "paid":
+        rid = (payload.get("meta", {}) or {}).get("custom_data", {}).get("report_id")
+        email = attrs.get("user_email")
+
+        if rid:
+            # 3) Persist payment in the SAME DB/table checked by _is_paid()
+            _db_gc()
+            with _db() as con:
+                con.execute(
+                    "INSERT OR REPLACE INTO payments (rid, paid_at, provider, email) VALUES (?, ?, ?, ?)",
+                    (rid, time.time(), "lemon", email),
+                )
+                con.commit()
 
     return jsonify({"ok": True}), 200
