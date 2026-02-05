@@ -113,13 +113,11 @@
       const rid = {{ report_id | tojson }};
       let t = 0;
       const tick = () => { t += 1; if(elE) elE.textContent = String(t); };
-      let paid = false;
       const poll = async () => {
         try {
           const r = await fetch(`/api/ai-status/${rid}`, {cache:'no-store'});
           const j = await r.json();
           if(elS && j && j.ai_status) elS.textContent = j.ai_status;
-          if(j && typeof j.paid === 'boolean') paid = j.paid;
         } catch(e) {}
       };
 
@@ -128,31 +126,13 @@
         overlay.classList.add('show');
         btn.setAttribute('aria-disabled', 'true');
         btn.style.pointerEvents = 'none';
-        ev.preventDefault();
-
-        // We don't trust the success URL. We only proceed when the backend
-        // confirms "paid" (i.e., webhook processed and DB updated).
         poll();
         setInterval(tick, 1000);
-        const pollTimer = setInterval(poll, 2000);
-
-        const start = Date.now();
-        const gate = setInterval(() => {
-          if(paid){
-            clearInterval(gate);
-            clearInterval(pollTimer);
-            window.location.href = btn.getAttribute('href');
-            return;
-          }
-          // Safety timeout: keep the user on this page if webhook is delayed.
-          if(Date.now() - start > 120000){
-            clearInterval(gate);
-            // Re-enable the button so user can retry.
-            btn.removeAttribute('aria-disabled');
-            btn.style.pointerEvents = 'auto';
-            overlay.classList.remove('show');
-          }
-        }, 500);
+        setInterval(poll, 2000);
+        // Navigate right away (report now renders without blocking on OpenAI).
+        // Keeping a small delay ensures the overlay is painted before navigation.
+        ev.preventDefault();
+        setTimeout(() => { window.location.href = btn.getAttribute('href'); }, 250);
       });
     })();
   </script>
