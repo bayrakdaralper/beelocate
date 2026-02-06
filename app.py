@@ -34,8 +34,37 @@ def init_gee():
     global GEE_OK, GEE_ERR
     project = os.environ.get('EE_PROJECT', 'beelocatepro-ee')
 
-    # 1) Preferred (production): Service Account JSON via env
-    # Render/containers cannot run interactive auth or rely on gcloud.
+    # 1) Preferred (production): Service Account JSON from a FILE (Render Secret File)
+    # In containers, putting large JSON blobs into env vars is fragile (line breaks / quoting).
+    # We therefore support reading the service account key from a mounted secret file.
+    #
+    # Accepted env vars (first match wins):
+    # - GEE_SA_PATH (our app-specific path)
+    # - GOOGLE_APPLICATION_CREDENTIALS (Google standard)
+    sa_path = os.environ.get('GEE_SA_PATH') or os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+    if sa_path and os.path.exists(sa_path):
+        try:
+            import json as _json
+            with open(sa_path, 'r', encoding='utf-8') as f:
+                info = _json.load(f)
+            client_email = info.get('client_email')
+            project_id = info.get('project_id') or project
+            if not client_email:
+                raise ValueError('Service account JSON missing client_email')
+
+            credentials = ee.ServiceAccountCredentials(client_email, sa_path)
+            ee.Initialize(credentials, project=project_id)
+            GEE_OK = True
+            GEE_ERR = ''
+            print(f'GEE: Service Account Auth OK (project={project_id})')
+            return
+        except Exception as e_sa:
+            GEE_OK = False
+            GEE_ERR = str(e_sa)
+            print(f"GEE Service Account Auth Failed (file): {e_sa}")
+
+    # 1b) Backward compatible: Service Account JSON via env (NOT recommended)
+    # Keeps older deployments working, but prefer the file-based method above.
     sa_json = os.environ.get('GEE_SERVICE_ACCOUNT_JSON')
     if sa_json:
         try:
