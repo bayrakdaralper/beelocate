@@ -3884,9 +3884,15 @@ def analyze():
             return jsonify({"ok": False, "error": msg_rl}), 429
 
         # Language hint (used only for labels/text; computation is language-agnostic)
-        # MVP decision: English-only UI/text for now.
-        # (i18n keys exist; we'll re-enable language switching in FAZ-4.)
-        lang = 'en'
+        # EN-first by default; other languages are opt-in.
+        # Source order: query (?lang=tr), header (X-Lang), cookie (blp_lang), then EN.
+        lang = (request.args.get('lang')
+                or request.headers.get('X-Lang')
+                or request.cookies.get('blp_lang')
+                or getattr(g, 'lang', None)
+                or 'en')
+        lang = str(lang).lower().strip()
+        is_en = (lang == 'en')
         unit_system = _units_normalize(d.get('units') or request.headers.get('X-Units') or request.args.get('units') or 'metric')
 
         lat = d.get("lat")
@@ -3960,7 +3966,8 @@ def analyze():
 
         flora = get_flora(roi, target_month, season_meta=season_meta, lang=lang)
         water = get_water_hybrid(roi, lang=lang)
-        topo = get_elevation_full(roi)
+        # Elevation/topography summary
+        topo = get_elevation_full(lat, lon, buffer_m, is_en=is_en)
         clim = get_climate_smart(lat, lon)
         urban = get_urban(roi)
         transport = get_transport(lon, lat, is_en=is_en)

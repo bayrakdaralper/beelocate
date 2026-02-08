@@ -40,6 +40,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
 
 
 def get_lang(lang: str | None) -> str:
+    forced = os.getenv("FORCE_LANG")
+    if forced:
+        lang = forced
     if not lang:
         lang = os.getenv("APP_LANG", "EN")
     lang = str(lang).strip().lower()
