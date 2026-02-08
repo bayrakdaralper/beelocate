@@ -1038,7 +1038,7 @@ def _ai_fallback_insights(payload: dict) -> dict:
     flight = cards.get("flight_window") or cards.get("flight") or {}
 
     def _v(x, keys=("val", "value")):
-        for k in keys:
+        for k in reversed(list(keys)):
             if isinstance(x, dict) and x.get(k) not in (None, "--", ""):
                 return x.get(k)
         return None
@@ -2032,14 +2032,22 @@ def get_climate_smart(lat, lon, is_en: bool = True):
         scale=5000,
         maxPixels=1e8
     ))
-
     # Band/name fallbacks across datasets & reducers.
-    precip_obj = stats.get('precipitation',
-                   stats.get('ppt',
-                     stats.get('precip',
-                       stats.get('total_precipitation', None)
-                     )
-                   ))
+    # IMPORTANT: ee.Dictionary.get() will throw if key missing *unless* you provide a default,
+    # and Python eagerly evaluates function arguments. So we must NOT nest .get() calls as defaults.
+    # Use server-side lazy conditionals instead.
+    def _dict_get_any(d: 'ee.Dictionary', keys):
+        v = None
+        for k in reversed(list(keys)):
+            v = ee.Algorithms.If(d.contains(k), d.get(k), v)
+        return v
+
+    precip_obj = _dict_get_any(stats, [
+        'precipitation',
+        'ppt',
+        'precip',
+        'total_precipitation'
+    ])
 
     precip_val = None
     try:
