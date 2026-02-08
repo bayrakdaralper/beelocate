@@ -8,6 +8,15 @@ import ee
 import requests
 from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for, g
 
+# ------------------------------------------------------------
+# Runtime configuration
+# ------------------------------------------------------------
+# Some templates reference MAPBOX_TOKEN directly via the Flask context.
+# If this variable isn't defined at module scope, the home route crashes
+# with NameError under Gunicorn.
+MAPBOX_TOKEN = os.environ.get('MAPBOX_TOKEN', '')
+
+
 
 # ----------------------------
 # Small geo helpers
@@ -145,6 +154,13 @@ import shutil
 import hashlib
 import hmac
 from pathlib import Path
+
+# ------------------------------------------------------------
+# Runtime configuration
+# ------------------------------------------------------------
+# Templates expect MAPBOX_TOKEN to exist. If it is missing, the app will crash
+# at the home route with NameError. Keep a safe module-level default.
+MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN", "")
 
 # Optional: load .env automatically in local/dev
 try:
