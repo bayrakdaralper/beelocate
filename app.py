@@ -36,11 +36,49 @@ def init_gee():
 
     # 1) Preferred (production): Service Account JSON via env
     # Render/containers cannot run interactive auth or rely on gcloud.
+    # We support BOTH:
+    #   - raw JSON content in GEE_SERVICE_ACCOUNT_JSON
+    #   - a file path in GEE_SERVICE_ACCOUNT_JSON (or GOOGLE_APPLICATION_CREDENTIALS)
     sa_json = os.environ.get('GEE_SERVICE_ACCOUNT_JSON')
-    if sa_json:
+    sa_path = None
+    if sa_json and sa_json.strip().startswith('/') and os.path.isfile(sa_json.strip()):
+        sa_path = sa_json.strip()
+        sa_json = None
+    if not sa_path:
+        gac = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+        if gac and gac.strip().startswith('/'):
+            # Even if the file doesn't exist (mis-typed name), keep it as a candidate
+            # and let the open() below produce a clear error.
+            sa_path = gac.strip()
+
+    # 1b) Render Secret Files fallback: if no explicit path is provided or the path is wrong,
+    # try to auto-detect a single JSON key under /etc/secrets.
+    if not sa_json and (not sa_path or not os.path.isfile(sa_path)):
+        try:
+            secrets_dir = '/etc/secrets'
+            if os.path.isdir(secrets_dir):
+                candidates = [
+                    os.path.join(secrets_dir, f)
+                    for f in os.listdir(secrets_dir)
+                    if f.lower().endswith('.json')
+                ]
+                if len(candidates) == 1:
+                    sa_path = candidates[0]
+                elif len(candidates) > 1:
+                    # Prefer likely EE service account keys
+                    preferred = [p for p in candidates if 'beelocate' in os.path.basename(p).lower() or 'ee' in os.path.basename(p).lower()]
+                    sa_path = preferred[0] if preferred else candidates[0]
+        except Exception:
+            pass
+
+    if sa_json or sa_path:
         try:
             import json as _json
             import tempfile as _tempfile
+            if sa_path:
+                with open(sa_path, 'r', encoding='utf-8') as f:
+                    sa_json = f.read()
+
             info = _json.loads(sa_json)
             client_email = info.get('client_email')
             project_id = info.get('project_id') or project
