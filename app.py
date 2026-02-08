@@ -2258,7 +2258,13 @@ def get_precipitation(roi, month_arg, lang="en"):
             }
 
         total = chirps.sum().rename("precip")
-        mm = total.reduceRegion(ee.Reducer.mean(), roi, 5500).get("precip").getInfo()
+        mm_obj = ee.Dictionary(total.reduceRegion(ee.Reducer.mean(), roi, 5500)).get("precip", -9999)
+        try:
+            mm = float(ee.Number(mm_obj).getInfo())
+            if mm == -9999:
+                mm = None
+        except Exception:
+            mm = None
         if mm is None:
             return {
                 "val": 0,
@@ -4029,7 +4035,7 @@ def analyze():
                 target_month_for_precip = current_month
             target_month = target_month_for_precip
 
-        print(f"--- ANALİZ: {lat}, {lon} | R: {rad}m | M: {target_month} ---")
+        print(f"--- ANALYSIS: {lat}, {lon} | R: {rad}m | M: {target_month} ---")
 
         flora = get_flora(roi, target_month, season_meta=season_meta, lang=lang)
         water = get_water_hybrid(roi, lang=lang)
@@ -4037,7 +4043,7 @@ def analyze():
         buffer_m = rad  # scan radius in meters
         topo = get_elevation_full(lat, lon, buffer_m, is_en=is_en)
         clim = get_climate_smart(lat, lon)
-        urban = get_urban(roi)
+        urban = get_urban(lat, lon, is_en=is_en)
         transport = get_transport(lon, lat, is_en=is_en)
         precip = get_precipitation(roi, target_month_for_precip, lang=lang)
         settlement = get_settlement(lon, lat)
