@@ -2018,14 +2018,28 @@ def get_climate_smart(lat, lon, is_en: bool = True):
     month = datetime.utcnow().month
 
     # Use CHIRPS monthly
-    chirps = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')         .filterDate(f"{year}-{month:02d}-01", f"{year}-{month:02d}-28")         .sum()
+    # NOTE: CHIRPS is daily; we sum a month window. Do NOT hardcode day=28.
+    # We use a safe "next month start" end date so February/31-day months won't break.
+    start = datetime(year, month, 1)
+    if month == 12:
+        end = datetime(year + 1, 1, 1)
+    else:
+        end = datetime(year, month + 1, 1)
+    start_str = start.strftime("%Y-%m-%d")
+    end_str = end.strftime("%Y-%m-%d")
 
-    precip_mm = chirps.reduceRegion(
+    chirps = (ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+              .filterDate(start_str, end_str)
+              .sum())
+
+    # reduceRegion returns a Dictionary; its keys can be missing if region is masked.
+    # Using Dictionary.get(key, default) avoids a hard EEException.
+    precip_mm = (chirps.reduceRegion(
         reducer=ee.Reducer.mean(),
         geometry=roi,
         scale=5000,
         maxPixels=1e8
-    ).get('precipitation')
+    ).get('precipitation', None))
 
     precip_val = float(precip_mm.getInfo()) if precip_mm else None
     if precip_val is None:
@@ -3929,6 +3943,9 @@ def analyze():
             rad = 2000.0
 
         rad = clamp(rad, 200, 20000)
+        # Keep a clearly-named alias for downstream functions.
+        # This prevents NameError regressions when refactoring the analyze() pipeline.
+        buffer_m = float(rad)
 
         current_month = datetime.now().month
 
@@ -3967,7 +3984,6 @@ def analyze():
         flora = get_flora(roi, target_month, season_meta=season_meta, lang=lang)
         water = get_water_hybrid(roi, lang=lang)
         # Elevation/topography summary
-        buffer_m = rad  # scan radius in meters
         topo = get_elevation_full(lat, lon, buffer_m, is_en=is_en)
         clim = get_climate_smart(lat, lon)
         urban = get_urban(roi)
