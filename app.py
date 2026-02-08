@@ -2012,45 +2012,50 @@ def get_water_hybrid(roi, lang="en"):
 
 
 def get_climate_smart(lat, lon, is_en: bool = True):
-    """Monthly precipitation (CHIRPS) around point (buffer), with human-readable summary."""
+    """Monthly precipitation (CHIRPS daily → monthly sum) around point (buffer)."""
     roi = ee.Geometry.Point([lon, lat]).buffer(2500)
-    year = datetime.utcnow().year
-    month = datetime.utcnow().month
 
-    # Use CHIRPS monthly
-    # NOTE: CHIRPS is daily; we sum a month window. Do NOT hardcode day=28.
-    # We use a safe "next month start" end date so February/31-day months won't break.
-    start = datetime(year, month, 1)
-    if month == 12:
-        end = datetime(year + 1, 1, 1)
-    else:
-        end = datetime(year, month + 1, 1)
-    start_str = start.strftime("%Y-%m-%d")
-    end_str = end.strftime("%Y-%m-%d")
+    now = datetime.utcnow()
+    year = now.year
+    month = now.month
+    last_day = calendar.monthrange(year, month)[1]
 
-    chirps = (ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
-              .filterDate(start_str, end_str)
-              .sum())
+    # CHIRPS daily → sum over the month (band name is usually 'precipitation')
+    chirps_month = (
+        ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+        .filterDate(f"{year}-{month:02d}-01", f"{year}-{month:02d}-{last_day:02d}")
+        .sum()
+    )
 
-    # reduceRegion returns a Dictionary; its keys can be missing if region is masked.
-    # Using Dictionary.get(key, default) avoids a hard EEException.
-    precip_mm = (chirps.reduceRegion(
+    stats = chirps_month.reduceRegion(
         reducer=ee.Reducer.mean(),
         geometry=roi,
         scale=5000,
         maxPixels=1e8
-    ).get('precipitation', None))
+    )
 
-    precip_val = float(precip_mm.getInfo()) if precip_mm else None
+    # IMPORTANT: EE Dictionary.get without default HARD-FAILS if key is missing.
+    # Use defaults + fallbacks to avoid crashing the whole analysis.
+    precip_obj = stats.get(
+        'precipitation',
+        stats.get('precip', stats.get('total_precipitation', stats.get('ppt', None)))
+    )
+
+    precip_val_raw = precip_obj.getInfo() if precip_obj is not None else None
+    try:
+        precip_val = float(precip_val_raw) if precip_val_raw is not None else None
+    except Exception:
+        precip_val = None
+
     if precip_val is None:
         desc = 'No precipitation data available.' if is_en else 'Yağış verisi bulunamadı.'
         return {'value': None, 'unit': 'mm', 'desc': desc}
 
     precip_val = round(precip_val, 1)
     if is_en:
-        desc = f"Total precipitation ({year}-{month:02d}) | Source: CHIRPS"
+        desc = f"Mean monthly precipitation in buffer ({year}-{month:02d}) | Source: CHIRPS"
     else:
-        desc = (f"Total precipitation ({year}-{month:02d}) | Source: CHIRPS" if is_en else f"Toplam Yağış ({year}-{month:02d}) | Kaynak: CHIRPS")
+        desc = f"Tampon alanda aylık ortalama yağış ({year}-{month:02d}) | Kaynak: CHIRPS"
 
     return {'value': precip_val, 'unit': 'mm', 'desc': desc}
 
@@ -3943,9 +3948,6 @@ def analyze():
             rad = 2000.0
 
         rad = clamp(rad, 200, 20000)
-        # Keep a clearly-named alias for downstream functions.
-        # This prevents NameError regressions when refactoring the analyze() pipeline.
-        buffer_m = float(rad)
 
         current_month = datetime.now().month
 
@@ -3984,6 +3986,7 @@ def analyze():
         flora = get_flora(roi, target_month, season_meta=season_meta, lang=lang)
         water = get_water_hybrid(roi, lang=lang)
         # Elevation/topography summary
+        buffer_m = rad  # scan radius in meters
         topo = get_elevation_full(lat, lon, buffer_m, is_en=is_en)
         clim = get_climate_smart(lat, lon)
         urban = get_urban(roi)
