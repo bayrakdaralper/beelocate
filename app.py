@@ -2043,52 +2043,106 @@ def get_water_hybrid(roi, lang="en"):
 # ----------------------------
 
 
-def get_climate_smart(lat, lon, is_en: bool = True):
-    """Monthly precipitation (CHIRPS) around point (buffer), with human-readable summary."""
-    roi = ee.Geometry.Point([lon, lat]).buffer(2500)
-    year = datetime.utcnow().year
-    month = datetime.utcnow().month
+def get_climate_smart(lat, lon, roi=None, lang='en'):
+    """Return a lightweight climate snapshot for UI cards.
 
-    # Use CHIRPS daily -> monthly total/mean within the current month.
-    # IMPORTANT: reduceRegion().get('precipitation') can throw if the key is missing.
-    # We guard it with a default sentinel to avoid hard crashes.
-    start = f"{year}-{month:02d}-01"
-    if month == 12:
-        end = f"{year + 1}-01-01"
-    else:
-        end = f"{year}-{(month + 1):02d}-01"
+    We avoid external APIs (Open-Meteo etc.) to keep Render deployments deterministic.
+    Temperature / wind / humidity are derived from ERA5-Land HOURLY over the last 30 days.
+    Precipitation is provided separately via CHIRPS monthly in get_precipitation().
+    """
+    lang = (lang or 'en').lower().strip()
+    is_en = (lang == 'en')
 
-    chirps = (
-        ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
-        .filterDate(start, end)
-        .sum()
-    )
+    # ROI: small buffer around the point to make reduceRegion stable
+    try:
+        if roi is None:
+            roi = ee.Geometry.Point([float(lon), float(lat)]).buffer(1000)
+    except Exception:
+        roi = None
 
-    rr = chirps.reduceRegion(
-        reducer=ee.Reducer.mean(),
-        geometry=roi,
-        scale=5000,
-        maxPixels=1e8
-    )
+    out = {
+        'temp': {'value': None, 'desc': ''},
+        'humidity': {'value': None, 'desc': ''},
+        'wind': {'speed_kmh': None, 'dir_deg': None, 'dir_label': None, 'desc': ''},
+        'precip': {'value': None, 'desc': ''},
+    }
 
-    precip_obj = ee.Dictionary(rr).get('precipitation', -9999)
+    # ERA5-Land hourly means for last 30 days
+    if roi is None:
+        return out
 
     try:
-        precip_val = float(ee.Number(precip_obj).getInfo())
+        end = datetime.utcnow()
+        start = end - timedelta(days=30)
+
+        coll = (ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY')
+                .filterDate(start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+                .filterBounds(roi))
+
+        # Bands
+        t2m = coll.select('temperature_2m').mean().subtract(273.15)  # C
+        td2m = coll.select('dewpoint_temperature_2m').mean().subtract(273.15)  # C
+        u10 = coll.select('u_component_of_wind_10m').mean()
+        v10 = coll.select('v_component_of_wind_10m').mean()
+
+        # Relative humidity from temperature & dew point (Magnus formula)
+        # RH = 100 * exp((17.625*Td)/(243.04+Td)) / exp((17.625*T)/(243.04+T))
+        rh = ee.Image(100).multiply(
+            td2m.multiply(17.625).divide(td2m.add(243.04)).exp()
+        ).divide(
+            t2m.multiply(17.625).divide(t2m.add(243.04)).exp()
+        ).clamp(0, 100)
+
+        # Wind speed (m/s -> km/h) and direction
+        wind_speed_ms = u10.pow(2).add(v10.pow(2)).sqrt()
+        wind_speed_kmh = wind_speed_ms.multiply(3.6)
+        # Direction: meteorological convention is tricky; we use mathematical angle for UI hint.
+        # theta = atan2(u, v) converted to degrees and normalized to 0-360
+        wind_dir = u10.atan2(v10).multiply(180/3.141592653589793)
+        wind_dir = wind_dir.add(360).mod(360)
+
+        stats = ee.Image.cat([t2m.rename('t'), rh.rename('rh'), wind_speed_kmh.rename('w'), wind_dir.rename('wd')]).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=roi,
+            scale=1000,
+            maxPixels=1e8,
+            bestEffort=True
+        )
+
+        t_val = stats.get('t')
+        rh_val = stats.get('rh')
+        w_val = stats.get('w')
+        wd_val = stats.get('wd')
+
+        t_val = float(ee.Number(t_val).getInfo()) if t_val is not None else None
+        rh_val = float(ee.Number(rh_val).getInfo()) if rh_val is not None else None
+        w_val = float(ee.Number(w_val).getInfo()) if w_val is not None else None
+        wd_val = float(ee.Number(wd_val).getInfo()) if wd_val is not None else None
+
+        if t_val is not None:
+            out['temp']['value'] = t_val
+            out['temp']['desc'] = ('30-day mean (ERA5-Land)' if is_en else '30 günlük ort. (ERA5-Land)')
+
+        if rh_val is not None:
+            out['humidity']['value'] = rh_val
+            out['humidity']['desc'] = ('30-day mean (derived)' if is_en else '30 günlük ort. (türetildi)')
+
+        if w_val is not None:
+            out['wind']['speed_kmh'] = w_val
+            out['wind']['desc'] = ('30-day mean (ERA5-Land)' if is_en else '30 günlük ort. (ERA5-Land)')
+
+        if wd_val is not None:
+            out['wind']['dir_deg'] = wd_val
+            try:
+                out['wind']['dir_label'] = wind_dir_label(wd_val, is_en=is_en)
+            except Exception:
+                out['wind']['dir_label'] = None
+
     except Exception:
-        precip_val = None
+        # Keep silent; UI will show '--'
+        pass
 
-    if precip_val is None or precip_val <= -9000:
-        desc = "No precipitation data available." if is_en else "Yağış verisi bulunamadı."
-        return {'value': None, 'unit': 'mm', 'desc': desc}
-
-    precip_val = round(precip_val, 1)
-    desc = f"Total precipitation ({year}-{month:02d}) | Source: CHIRPS" if is_en else f"Toplam Yağış ({year}-{month:02d}) | Kaynak: CHIRPS"
-    return {'value': precip_val, 'unit': 'mm', 'desc': desc}
-
-# ----------------------------
-# 3) Flora (NDVI + landcover)
-# ----------------------------
+    return out
 
 
 def _worldcover_distribution(roi, is_en: bool = True):
@@ -4042,24 +4096,13 @@ def analyze():
         # Elevation/topography summary
         buffer_m = rad  # scan radius in meters
         topo = get_elevation_full(lat, lon, buffer_m, is_en=is_en)
-        clim = get_climate_smart(lat, lon)
+        clim = get_climate_smart(lat, lon, roi=roi, lang=lang)
         urban = get_urban(lat, lon, is_en=is_en)
         transport = get_transport(lon, lat, is_en=is_en)
         precip = get_precipitation(roi, target_month_for_precip, lang=lang)
         settlement = get_settlement(lon, lat)
         flight = get_era5_flight_stats(roi)
         flight_suitability = make_flight_suitability(flight, lang=lang)
-
-        # Enrich live climate text with ERA5 averages (if available)
-        try:
-            if flight.get("status") == "Aktif":
-                tavg = flight.get("temp_avg_c", None)
-                if tavg is not None:
-                    tdesc = clim.get("temp", {}).get("desc", "")
-                    clim.setdefault("temp", {})
-                    clim["temp"]["desc"] = f"{tdesc} | Ort: {float(tavg):.1f}°C (ERA5)"
-        except Exception:
-            pass
 
         score_map = {
             "flora": metric_score(flora),
