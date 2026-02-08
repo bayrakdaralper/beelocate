@@ -4001,10 +4001,12 @@ def analyze():
         buffer_m = rad  # scan radius in meters
         topo = get_elevation_full(lat, lon, buffer_m, is_en=is_en)
         clim = get_climate_smart(lat, lon)
-        urban = get_urban(roi)
+        # get_urban expects (lat, lon). Passing roi here crashes runtime.
+        urban = get_urban(lat, lon, is_en=is_en)
         transport = get_transport(lon, lat, is_en=is_en)
         precip = get_precipitation(roi, target_month_for_precip, lang=lang)
-        settlement = get_settlement(lon, lat)
+        # get_settlement expects (lat, lon). Keep ordering consistent.
+        settlement = get_settlement(lat, lon, is_en=is_en)
         flight = get_era5_flight_stats(roi)
         flight_suitability = make_flight_suitability(flight, lang=lang)
 
