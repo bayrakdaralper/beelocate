@@ -7,6 +7,7 @@ import os
 import ee
 import requests
 from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for, g
+import calendar
 
 
 # ----------------------------
