@@ -1840,7 +1840,7 @@ def get_water_hybrid(roi, lang="tr"):
 
     except Exception as e:
         print(f"Water Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "Analysis error", "status": "Pasif"}
 
 
 # ----------------------------
@@ -1956,8 +1956,8 @@ def get_flora(roi, month_arg, season_meta=None, lang="tr"):
         s2_img = get_sentinel_collection_safe(roi, start_date, end_date)
         if not s2_img:
             return {"val": 0, "score": None,
-                    "label": ("No Data" if str(lang).lower().startswith("en") else "Veri Yok"),
-                    "desc": ("No Sentinel-2 image found" if str(lang).lower().startswith("en") else "Sentinel-2 Görüntüsü Bulunamadı"),
+                    "label": ("No Data" if str(lang).lower().startswith("en") else "No data"),
+                    "desc": ("No Sentinel-2 image found" if str(lang).lower().startswith("en") else "No Sentinel-2 image found"),
                     "status": "Pasif"}
 
         ndvi = s2_img.normalizedDifference(["B8", "B4"])
@@ -1985,17 +1985,17 @@ def get_flora(roi, month_arg, season_meta=None, lang="tr"):
         if dist:
             top = list(dist.items())[:3]
             lc_str = " | ".join([f"{k}: %{v}" for k, v in top])
-            land_desc = (f"Land cover: {lc_str}" if is_en else f"Arazi Örtüsü: {lc_str}")
+            land_desc = (f"Land cover: {lc_str}" if is_en else f"Land cover: {lc_str}")
         else:
-            land_desc = "Land cover: Not detected" if is_en else "Arazi Örtüsü: Tespit Edilemedi"
+            land_desc = "Land cover: Not detected" if is_en else "Land cover: Not detected"
 
         desc = (f"NDVI: {round(val, 2)} (Sentinel-2) | {land_desc} | Window: {date_info}" if is_en
-                else f"NDVI: {round(val, 2)} (Sentinel-2) | {land_desc} | Dönem: {date_info}")
+                else f"NDVI: {round(val, 2)} (Sentinel-2) | {land_desc} | Window: {date_info}")
         return {"val": final_score, "score": final_score, "label": label, "desc": desc, "status": "Aktif"}
 
     except Exception as e:
         print(f"Flora Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Sistem Hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "System error", "status": "Pasif"}
 
 
 # ----------------------------
@@ -2025,22 +2025,22 @@ def get_precipitation(roi, month_arg):
         chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(start_str, end_str).filterBounds(roi)
         count = chirps.size().getInfo()
         if not count or count == 0:
-            return {"val": 0, "score": None, "label": "Veri Yok", "desc": "CHIRPS yağış verisi bulunamadı", "status": "Pasif"}
+            return {"val": 0, "score": None, "label": "No data", "desc": "No CHIRPS precipitation data found", "status": "Pasif"}
 
         total = chirps.sum().rename("precip")
         mm = total.reduceRegion(ee.Reducer.mean(), roi, 5500).get("precip").getInfo()
         if mm is None:
-            return {"val": 0, "score": None, "label": "Veri Yok", "desc": "Yağış değeri alınamadı", "status": "Pasif"}
+            return {"val": 0, "score": None, "label": "No data", "desc": "Could not retrieve precipitation value", "status": "Pasif"}
 
         mm = float(mm)
         score = precip_score_from_mm(mm)
         label = f"{mm:.0f} mm"
-        desc = f"Toplam Yağış ({date_info}) | Kaynak: CHIRPS"
+        desc = f"Total precipitation ({date_info}) | Source: CHIRPS"
         return {"val": mm, "score": score, "label": label, "desc": desc, "status": "Aktif"}
 
     except Exception as e:
         print(f"Precip Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "Analysis error", "status": "Pasif"}
 
 
 # ----------------------------
@@ -2230,7 +2230,7 @@ def get_settlement(lon, lat):
 
     except Exception as e:
         print(f"Settlement Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "Analysis error", "status": "Pasif"}
 
 
 # ----------------------------
@@ -2290,15 +2290,15 @@ out center 120;
                     "value": best,
                     "score": road_score_from_dist_m(best),
                     "label": label,
-                    "desc": "En yakın yol (OSM/Overpass)",
+                    "desc": "Nearest road (OSM/Overpass)",
                     "status": "Aktif",
                 }
 
-        return {"val": 0, "score": None, "label": "--", "desc": "Yol bulunamadı (OSM)", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "No road found (OSM)", "status": "Pasif"}
 
     except Exception as e:
         print(f"Transport Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Yol analizi hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "Road analysis error", "status": "Pasif"}
 
 
 def get_transport(lon, lat):
@@ -3850,7 +3850,7 @@ def analyze():
         return jsonify(
             {
                 "score": 0,
-                "sys_msg": "Sistem Hatası",
+                "sys_msg": "System error",
                 "details": {
                     "flora": ensure_schema({}, default_label="Hata"),
                     "water": ensure_schema({}, default_label="Hata"),
