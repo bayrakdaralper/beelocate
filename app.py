@@ -3967,6 +3967,7 @@ def analyze():
         flora = get_flora(roi, target_month, season_meta=season_meta, lang=lang)
         water = get_water_hybrid(roi, lang=lang)
         # Elevation/topography summary
+        buffer_m = rad  # scan radius in meters
         topo = get_elevation_full(lat, lon, buffer_m, is_en=is_en)
         clim = get_climate_smart(lat, lon)
         urban = get_urban(roi)
@@ -4082,24 +4083,24 @@ def analyze():
                 "score": 0,
                 "sys_msg": ("System error" if is_en else "Sistem Hatası"),
                 "details": {
-                    "flora": ensure_schema({}, default_label="Hata"),
-                    "water": ensure_schema({}, default_label="Hata"),
-                    "urban": ensure_schema({}, default_label="Hata"),
-                    "transport": ensure_schema({}, default_label="Hata"),
-                    "precip": ensure_schema({}, default_label="Hata"),
-                    "settlement": ensure_schema({}, default_label="Hata"),
-                    "elevation": ensure_schema({}, default_label="Hata"),
-                    "slope": ensure_schema({}, default_label="Hata"),
-                    "aspect": ensure_schema({}, default_label="Hata"),
+                    "flora": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "water": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "urban": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "transport": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "precip": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "settlement": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "elevation": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "slope": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "aspect": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
                     "climate": {
-                        "temp": ensure_schema({}, default_label="Hata"),
-                        "wind": ensure_schema({}, default_label="Hata"),
-                        "humidity": ensure_schema({}, default_label="Hata"),
+                        "temp": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                        "wind": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                        "humidity": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
                     },
                     "topography": {
-                        "elevation": ensure_schema({}, default_label="Hata"),
-                        "slope": ensure_schema({}, default_label="Hata"),
-                        "aspect": ensure_schema({}, default_label="Hata"),
+                        "elevation": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                        "slope": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                        "aspect": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
                     },
                 },
             }
