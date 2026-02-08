@@ -181,8 +181,10 @@ except Exception:
 
 @app.before_request
 def _set_lang_context():
-    # Keep it simple for MVP: default EN, but allow ?lang=TR later.
-    g.lang = _get_lang(request.args.get("lang"))
+    # EN-first product. Only switch language when explicitly requested.
+    # (No silent auto-detection via headers/session; it's too easy to end up half-TR/half-EN.)
+    lang_arg = (request.args.get("lang") or "").strip().lower()
+    g.lang = lang_arg if lang_arg in ("en", "tr") else "en"
 
 
 @app.context_processor
@@ -2047,27 +2049,41 @@ def get_climate_smart(lat, lon, is_en: bool = True):
     year = datetime.utcnow().year
     month = datetime.utcnow().month
 
-    # Use CHIRPS monthly
-    chirps = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')         .filterDate(f"{year}-{month:02d}-01", f"{year}-{month:02d}-28")         .sum()
+    # Use CHIRPS daily -> monthly total/mean within the current month.
+    # IMPORTANT: reduceRegion().get('precipitation') can throw if the key is missing.
+    # We guard it with a default sentinel to avoid hard crashes.
+    start = f"{year}-{month:02d}-01"
+    if month == 12:
+        end = f"{year + 1}-01-01"
+    else:
+        end = f"{year}-{(month + 1):02d}-01"
 
-    precip_mm = chirps.reduceRegion(
+    chirps = (
+        ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+        .filterDate(start, end)
+        .sum()
+    )
+
+    rr = chirps.reduceRegion(
         reducer=ee.Reducer.mean(),
         geometry=roi,
         scale=5000,
         maxPixels=1e8
-    ).get('precipitation')
+    )
 
-    precip_val = float(precip_mm.getInfo()) if precip_mm else None
-    if precip_val is None:
-        desc = 'No precipitation data available.' if is_en else 'Yağış verisi bulunamadı.'
+    precip_obj = ee.Dictionary(rr).get('precipitation', -9999)
+
+    try:
+        precip_val = float(ee.Number(precip_obj).getInfo())
+    except Exception:
+        precip_val = None
+
+    if precip_val is None or precip_val <= -9000:
+        desc = "No precipitation data available." if is_en else "Yağış verisi bulunamadı."
         return {'value': None, 'unit': 'mm', 'desc': desc}
 
     precip_val = round(precip_val, 1)
-    if is_en:
-        desc = f"Total precipitation ({year}-{month:02d}) | Source: CHIRPS"
-    else:
-        desc = (f"Total precipitation ({year}-{month:02d}) | Source: CHIRPS" if is_en else f"Toplam Yağış ({year}-{month:02d}) | Kaynak: CHIRPS")
-
+    desc = f"Total precipitation ({year}-{month:02d}) | Source: CHIRPS" if is_en else f"Toplam Yağış ({year}-{month:02d}) | Kaynak: CHIRPS"
     return {'value': precip_val, 'unit': 'mm', 'desc': desc}
 
 # ----------------------------
