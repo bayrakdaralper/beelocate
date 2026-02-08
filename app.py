@@ -6,7 +6,7 @@ import os
 
 import ee
 import requests
-from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for, g
+from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for
 
 
 # ----------------------------
@@ -34,51 +34,42 @@ def init_gee():
     global GEE_OK, GEE_ERR
     project = os.environ.get('EE_PROJECT', 'beelocatepro-ee')
 
-    # 1) Preferred (production): Service Account JSON via env
-    # Render/containers cannot run interactive auth or rely on gcloud.
-    # We support BOTH:
-    #   - raw JSON content in GEE_SERVICE_ACCOUNT_JSON
-    #   - a file path in GEE_SERVICE_ACCOUNT_JSON (or GOOGLE_APPLICATION_CREDENTIALS)
-    sa_json = os.environ.get('GEE_SERVICE_ACCOUNT_JSON')
-    sa_path = None
-    if sa_json and sa_json.strip().startswith('/') and os.path.isfile(sa_json.strip()):
-        sa_path = sa_json.strip()
-        sa_json = None
-    if not sa_path:
-        gac = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-        if gac and gac.strip().startswith('/'):
-            # Even if the file doesn't exist (mis-typed name), keep it as a candidate
-            # and let the open() below produce a clear error.
-            sa_path = gac.strip()
-
-    # 1b) Render Secret Files fallback: if no explicit path is provided or the path is wrong,
-    # try to auto-detect a single JSON key under /etc/secrets.
-    if not sa_json and (not sa_path or not os.path.isfile(sa_path)):
+    # 1) Preferred (production): Service Account JSON from a FILE (Render Secret File)
+    # In containers, putting large JSON blobs into env vars is fragile (line breaks / quoting).
+    # We therefore support reading the service account key from a mounted secret file.
+    #
+    # Accepted env vars (first match wins):
+    # - GEE_SA_PATH (our app-specific path)
+    # - GOOGLE_APPLICATION_CREDENTIALS (Google standard)
+    sa_path = os.environ.get('GEE_SA_PATH') or os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+    if sa_path and os.path.exists(sa_path):
         try:
-            secrets_dir = '/etc/secrets'
-            if os.path.isdir(secrets_dir):
-                candidates = [
-                    os.path.join(secrets_dir, f)
-                    for f in os.listdir(secrets_dir)
-                    if f.lower().endswith('.json')
-                ]
-                if len(candidates) == 1:
-                    sa_path = candidates[0]
-                elif len(candidates) > 1:
-                    # Prefer likely EE service account keys
-                    preferred = [p for p in candidates if 'beelocate' in os.path.basename(p).lower() or 'ee' in os.path.basename(p).lower()]
-                    sa_path = preferred[0] if preferred else candidates[0]
-        except Exception:
-            pass
+            import json as _json
+            with open(sa_path, 'r', encoding='utf-8') as f:
+                info = _json.load(f)
+            client_email = info.get('client_email')
+            project_id = info.get('project_id') or project
+            if not client_email:
+                raise ValueError('Service account JSON missing client_email')
 
-    if sa_json or sa_path:
+            credentials = ee.ServiceAccountCredentials(client_email, sa_path)
+            ee.Initialize(credentials, project=project_id)
+            GEE_OK = True
+            GEE_ERR = ''
+            print(f'GEE: Service Account Auth OK (project={project_id})')
+            return
+        except Exception as e_sa:
+            GEE_OK = False
+            GEE_ERR = str(e_sa)
+            print(f"GEE Service Account Auth Failed (file): {e_sa}")
+
+    # 1b) Backward compatible: Service Account JSON via env (NOT recommended)
+    # Keeps older deployments working, but prefer the file-based method above.
+    sa_json = os.environ.get('GEE_SERVICE_ACCOUNT_JSON')
+    if sa_json:
         try:
             import json as _json
             import tempfile as _tempfile
-            if sa_path:
-                with open(sa_path, 'r', encoding='utf-8') as f:
-                    sa_json = f.read()
-
             info = _json.loads(sa_json)
             client_email = info.get('client_email')
             project_id = info.get('project_id') or project
@@ -155,27 +146,6 @@ except Exception:
 
 app = Flask(__name__)
 
-# --- i18n (EN-first, but ready for expansion) ---
-try:
-    from i18n import get_lang as _get_lang, t as _t
-except Exception:
-    _get_lang = lambda x=None: "en"  # noqa: E731
-    _t = lambda k, lang="en", **kw: k  # noqa: E731
-
-
-@app.before_request
-def _set_lang_context():
-    # Keep it simple for MVP: default EN, but allow ?lang=TR later.
-    g.lang = _get_lang(request.args.get("lang"))
-
-
-@app.context_processor
-def _inject_i18n():
-    return {
-        "LANG": getattr(g, "lang", "en"),
-        "t": lambda key, **kw: _t(key, getattr(g, "lang", "en"), **kw),
-    }
-
 
 
 # ----------------------------
@@ -226,12 +196,7 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None
 
-_default_db = str(Path(app.root_path) / "blp.sqlite")
-# Render Disks are commonly mounted at /var/data. If present, default there so
-# purchases and reports survive redeploys.
-if os.path.isdir("/var/data"):
-    _default_db = "/var/data/blp.sqlite"
-DB_PATH = os.environ.get("BLP_DB_PATH", _default_db)
+DB_PATH = os.environ.get("BLP_DB_PATH", str(Path(app.root_path) / "blp.sqlite"))
 REPORT_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 PAID_TTL_SECONDS = 60 * 60 * 24 * 30   # 30 days
 
@@ -447,14 +412,6 @@ def _ai_compose_prompt(payload: dict) -> str:
     wind = climate.get('wind') or {}
     humidity = climate.get('humidity') or {}
 
-    unit_system = _units_normalize(payload.get("_unit_system") or payload.get("unit_system") or details.get("unit_system") or "metric")
-
-    rd_u = fmt_distance_km(transport.get("val") or transport.get("label"), unit_system)
-    sd_u = fmt_distance_km((details.get("settlement") or {}).get("val") if isinstance(details.get("settlement"), dict) else None, unit_system)
-    ev_u = fmt_elevation_m((topo.get("elevation") or {}).get("val"), unit_system)
-    pr_u = fmt_precip_mm(precip.get("val") or precip.get("label"), unit_system)
-    tv_u = fmt_temp_c(temp.get("val") or temp.get("label"), unit_system)
-    wv_u = fmt_wind_kmh(wind.get("val") or wind.get("label"), unit_system)
     transport = details.get('transport') or details.get('road') or details.get('roads') or {}
     urban = details.get('urban') or details.get('urbanization') or details.get('human') or {}
     settlement = details.get('settlement') or details.get('settlements') or details.get('residential') or {}
@@ -492,8 +449,6 @@ def _ai_compose_prompt(payload: dict) -> str:
     lines = []
     lines.append("You are BeeLocate PRO. Write premium decision-support commentary for a PAID beekeeping site report.")
     lines.append("Write in clear English. Be direct. No marketing fluff. No guarantees.")
-    lines.append(f"Preferred unit system: {unit_system}. Use these units for distances, elevation, precipitation, temperature, and wind.")
-    lines.append(f"Converted snapshot: Road distance {rd_u['value']} {rd_u['unit']}; Elevation {ev_u['value']} {ev_u['unit']}; Precip {pr_u['value']} {pr_u['unit']}; Temp {tv_u['value']} {tv_u['unit']}; Wind {wv_u['value']} {wv_u['unit']}.")
     lines.append("Use only the data below. If a value is missing, say it's missing and explain the implication.")
     lines.append("Return JSON only (no markdown, no code fences).")
     lines.append("")
@@ -576,96 +531,6 @@ def _deterministic_insights(payload: dict) -> dict:
         except Exception:
             return None
 
-
-# ----------------------------
-# Units (Metric / Imperial)
-# ----------------------------
-def _units_normalize(u: str | None) -> str:
-    u = (u or "").strip().lower()
-    return "imperial" if u in ("imperial", "us", "uscs", "english") else "metric"
-
-def _km_to_mi(km: float) -> float:
-    return float(km) * 0.621371
-
-def _m_to_ft(m: float) -> float:
-    return float(m) * 3.28084
-
-def _mm_to_in(mm: float) -> float:
-    return float(mm) / 25.4
-
-def _c_to_f(c: float) -> float:
-    return float(c) * 9.0/5.0 + 32.0
-
-def _kmh_to_mph(kmh: float) -> float:
-    return float(kmh) * 0.621371
-
-def _num_from_any(x):
-    """Extract a float from numbers or strings like '12.3 km' / '18°C'."""
-    if x is None:
-        return None
-    if isinstance(x, (int, float)):
-        try:
-            return float(x)
-        except Exception:
-            return None
-    s = str(x)
-    m = re.search(r"-?\d+(?:\.\d+)?", s)
-    if not m:
-        return None
-    try:
-        return float(m.group(0))
-    except Exception:
-        return None
-
-def fmt_distance_km(km, unit_system: str = "metric", nd: int = 1):
-    kmv = _num_from_any(km)
-    if kmv is None:
-        return {"value": "--", "unit": ""}
-    us = _units_normalize(unit_system)
-    if us == "imperial":
-        mi = _km_to_mi(kmv)
-        return {"value": f"{mi:.{nd}f}", "unit": "mi"}
-    return {"value": f"{kmv:.{nd}f}", "unit": "km"}
-
-def fmt_elevation_m(meters, unit_system: str = "metric", nd: int = 0):
-    mv = _num_from_any(meters)
-    if mv is None:
-        return {"value": "--", "unit": ""}
-    us = _units_normalize(unit_system)
-    if us == "imperial":
-        ft = _m_to_ft(mv)
-        return {"value": f"{ft:.{nd}f}", "unit": "ft"}
-    return {"value": f"{mv:.{nd}f}", "unit": "m"}
-
-def fmt_precip_mm(mm, unit_system: str = "metric", nd: int = 0):
-    mv = _num_from_any(mm)
-    if mv is None:
-        return {"value": "--", "unit": ""}
-    us = _units_normalize(unit_system)
-    if us == "imperial":
-        inch = _mm_to_in(mv)
-        return {"value": f"{inch:.{nd}f}", "unit": "in"}
-    return {"value": f"{mv:.{nd}f}", "unit": "mm"}
-
-def fmt_temp_c(c, unit_system: str = "metric", nd: int = 0):
-    cv = _num_from_any(c)
-    if cv is None:
-        return {"value": "--", "unit": ""}
-    us = _units_normalize(unit_system)
-    if us == "imperial":
-        f = _c_to_f(cv)
-        return {"value": f"{f:.{nd}f}", "unit": "°F"}
-    return {"value": f"{cv:.{nd}f}", "unit": "°C"}
-
-def fmt_wind_kmh(kmh, unit_system: str = "metric", nd: int = 0):
-    v = _num_from_any(kmh)
-    if v is None:
-        return {"value": "--", "unit": ""}
-    us = _units_normalize(unit_system)
-    if us == "imperial":
-        mph = _kmh_to_mph(v)
-        return {"value": f"{mph:.{nd}f}", "unit": "mph"}
-    return {"value": f"{v:.{nd}f}", "unit": "km/h"}
     score = g(["score"], g(["overall_score"], 0)) or 0
 
     cards = g(["cards"], {}) or {}
@@ -1038,7 +903,7 @@ def _ai_fallback_insights(payload: dict) -> dict:
     flight = cards.get("flight_window") or cards.get("flight") or {}
 
     def _v(x, keys=("val", "value")):
-        for k in reversed(list(keys)):
+        for k in keys:
             if isinstance(x, dict) and x.get(k) not in (None, "--", ""):
                 return x.get(k)
         return None
@@ -1949,20 +1814,15 @@ def get_sentinel_collection_safe(roi, start_date, end_date):
 # ----------------------------
 # 1) Water (hybrid)
 # ----------------------------
-def get_water_hybrid(roi, lang="en"):
-    """Hybrid water detection.
-
-    Uses JRC Global Surface Water (occurrence) + recent Sentinel-2 NDWI max.
-    Returns a normalized 0/100 water signal with human-readable labels.
-    """
-    is_en = str(lang).lower().startswith("en")
+def get_water_hybrid(roi, lang="tr"):
     try:
         # A) JRC Global Surface Water (occurrence)
         jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
         jrc_val = jrc.reduceRegion(ee.Reducer.max(), roi, 30).get("occurrence").getInfo()
 
-        # B) Sentinel-2 NDWI max (last ~60 days)
+        # B) Sentinel-2 NDWI max
         s2_img = get_sentinel_collection_safe(roi, datetime.now() - timedelta(days=60), datetime.now())
+
         ndwi_max = 0.0
         if s2_img:
             ndwi = s2_img.normalizedDifference(["B3", "B8"])  # Green - NIR
@@ -1970,167 +1830,102 @@ def get_water_hybrid(roi, lang="en"):
             if ndwi_val is not None:
                 ndwi_max = float(ndwi_val)
 
-        has_water = (jrc_val is not None and float(jrc_val) > 50) or (ndwi_max > 0.1)
+        if (jrc_val is not None and float(jrc_val) > 50) or (ndwi_max > 0.1):
+            src = "Kalıcı Su (JRC Global Water)" if (jrc_val is not None and float(jrc_val) > 50) else "Canlı Tespit (Uydu NDWI)"
+            is_en = str(lang).lower().startswith("en")
+            return {"val": 100, "score": 100, "label": ("Water Available" if is_en else "Su Kaynağı Var"), "desc": src, "status": "Aktif"}
 
-        if has_water:
-            src = (
-                "Permanent water (JRC Global Surface Water)"
-                if (jrc_val is not None and float(jrc_val) > 50)
-                else "Live detection (Satellite NDWI)"
-            )
-            return {
-                "val": 100,
-                "score": 100,
-                "label": "Water Available" if is_en else "Su Kaynağı Var",
-                "desc": src if is_en else ("Kalıcı Su (JRC Global Water)" if (jrc_val is not None and float(jrc_val) > 50) else "Canlı Tespit (Uydu NDWI)"),
-                "status": "Active" if is_en else "Aktif",
-            }
-
-        return {
-            "val": 0,
-            "score": 0,
-            "label": "No Water Detected" if is_en else "Su Yok",
-            "desc": "No surface water detected nearby" if is_en else "Yakınlarda su tespit edilemedi",
-            "status": "Active" if is_en else "Aktif",
-        }
+        is_en = str(lang).lower().startswith("en")
+        return {"val": 0, "score": 0, "label": ("No Water Detected" if is_en else "Su Yok"), "desc": ("No surface water detected nearby" if is_en else "Yakınlarda su tespit edilemedi"), "status": "Aktif"}
 
     except Exception as e:
         print(f"Water Error: {e}")
-        return {
-            "val": 0,
-            "score": None,
-            "label": "--",
-            "desc": "Analysis error" if is_en else "Analiz Hatası",
-            "status": "Inactive" if is_en else "Pasif",
-        }
+        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
 
 
 # ----------------------------
-
 # 2) Climate (Open-Meteo live)
 # ----------------------------
-
-
-def get_climate_smart(lat, lon, is_en: bool = True):
-    """Monthly precipitation (CHIRPS) around point (buffer), with human-readable summary.
-
-    NOTE: Earth Engine dictionaries throw if you call .get(key) for a missing key *without* a default.
-    This function must never crash the whole /analyze pipeline when precipitation is missing.
-    """
-    roi = ee.Geometry.Point([lon, lat]).buffer(2500)
-    year = datetime.utcnow().year
-    month = datetime.utcnow().month
-
-    # Keep date window behavior stable (1..28) to avoid product-behavior surprises.
-    chirps = (ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
-              .filterDate(f"{year}-{month:02d}-01", f"{year}-{month:02d}-28")
-              .sum())
-
-    stats = ee.Dictionary(chirps.reduceRegion(
-        reducer=ee.Reducer.mean(),
-        geometry=roi,
-        scale=5000,
-        maxPixels=1e8
-    ))
-    # Band/name fallbacks across datasets & reducers.
-    # IMPORTANT: ee.Dictionary.get() will throw if key missing *unless* you provide a default,
-    # and Python eagerly evaluates function arguments. So we must NOT nest .get() calls as defaults.
-    # Use server-side lazy conditionals instead.
-    def _dict_get_any(d: 'ee.Dictionary', keys):
-        v = None
-        for k in reversed(list(keys)):
-            v = ee.Algorithms.If(d.contains(k), d.get(k), v)
-        return v
-
-    precip_obj = _dict_get_any(stats, [
-        'precipitation',
-        'ppt',
-        'precip',
-        'total_precipitation'
-    ])
-
-    precip_val = None
+def get_climate_smart(lat, lon):
     try:
-        if precip_obj is not None:
-            precip_val = precip_obj.getInfo()
-            if precip_val is not None:
-                precip_val = float(precip_val)
-    except Exception:
-        # Do not crash analysis for missing/empty precipitation results.
-        precip_val = None
+        url = (
+            "https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
+            "&timezone=auto"
+        )
+        headers = {"User-Agent": "BeeLocatePro/1.0"}
+        r = requests.get(url, headers=headers, timeout=7)
+        live = r.json().get("current", {}) if r.status_code == 200 else {}
 
-    if precip_val is None:
-        desc = 'No precipitation data available.' if is_en else 'Yağış verisi bulunamadı.'
-        return {'value': None, 'unit': 'mm', 'desc': desc}
+        wind_dir = deg_to_cardinal(live.get("wind_direction_10m", 0))
 
-    precip_val = round(precip_val, 1)
-    if is_en:
-        desc = f"Total precipitation ({year}-{month:02d}) | Source: CHIRPS"
-    else:
-        desc = f"Toplam Yağış ({year}-{month:02d}) | Kaynak: CHIRPS"
+        return {
+            "temp": {"val": f"{live.get('temperature_2m', '--')}°C", "desc": "(Kaynak: Open-Meteo)", "status": "Aktif"},
+            "wind": {"val": f"{live.get('wind_speed_10m', '--')} km/h", "desc": f"Yön: {wind_dir}", "status": "Aktif"},
+            "humidity": {"val": f"%{live.get('relative_humidity_2m', '--')}", "desc": "Anlık Nem Oranı", "status": "Aktif"},
+            "status": "Aktif",
+        }
+    except Exception as e:
+        print(f"İklim Hatası: {e}")
+        return {"temp": {}, "wind": {}, "humidity": {}, "status": "Pasif"}
 
-    return {'value': precip_val, 'unit': 'mm', 'desc': desc}
 
 # ----------------------------
 # 3) Flora (NDVI + landcover)
 # ----------------------------
+def _worldcover_distribution(roi):
+    """Return land cover distribution (%) in the ROI using ESA WorldCover.
 
-
-def _worldcover_distribution(roi, is_en: bool = True):
-    """Return WorldCover class distribution (%), with labels in selected language."""
-    wc = ee.Image('ESA/WorldCover/v100/2020')
-    classes = wc.select('Map').reduceRegion(
-        reducer=ee.Reducer.frequencyHistogram(),
-        geometry=roi,
-        scale=10,
-        maxPixels=1e8
-    ).get('Map')
-
-    cls = ee.Dictionary(classes).getInfo() if classes else {}
-    total = sum(cls.values()) if cls else 0
-
-    land_types_en = {
-        10: 'Tree cover',
-        20: 'Shrubland',
-        30: 'Grassland',
-        40: 'Cropland',
-        50: 'Built-up',
-        60: 'Bare / sparse vegetation',
-        70: 'Snow & ice',
-        80: 'Permanent water bodies',
-        90: 'Herbaceous wetland',
-        95: 'Mangroves',
-        100: 'Moss & lichen'
+    Output example:
+      {"Ağaçlık Alan": 62.1, "Çalılık": 18.4, "Tarım Arazisi": 7.3, ...}
+    """
+    land_types = {
+        10: "Ağaçlık Alan",
+        20: "Çalılık",
+        30: "Çayır/Mera",
+        40: "Tarım Arazisi",
+        50: "Kentsel/Yapılaşma",
+        60: "Çıplak/Seyrek",
+        70: "Kar/Buz",
+        80: "Su Kütlesi",
+        90: "Otsu Sulak",
+        95: "Mangrov",
+        100: "Yosun/Liken",
     }
-    land_types_tr = {
-        10: 'Ağaçlık',
-        20: 'Çalılık',
-        30: 'Çayır/Mera',
-        40: 'Tarım',
-        50: 'Kent/Yapılaşma',
-        60: 'Çıplak Toprak',
-        70: 'Kar/Buz',
-        80: 'Su',
-        90: 'Sulak Alan',
-        95: 'Mangrov',
-        100: 'Yosun/Liken'
-    }
-    land_types = land_types_en if is_en else land_types_tr
 
-    if total == 0:
+    try:
+        wc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map")
+        hist = wc.reduceRegion(
+            reducer=ee.Reducer.frequencyHistogram(),
+            geometry=roi,
+            scale=10,
+            maxPixels=1e8,
+        ).get("Map").getInfo()
+
+        if not isinstance(hist, dict) or not hist:
+            return {}
+
+        total = float(sum(hist.values())) if sum(hist.values()) else 0.0
+        if total <= 0:
+            return {}
+
+        out = {}
+        for k, v in hist.items():
+            try:
+                cls = int(float(k))
+                cnt = float(v)
+            except Exception:
+                continue
+            name = land_types.get(cls, f"Bilinmeyen({cls})")
+            out[name] = round((cnt / total) * 100.0, 1)
+
+        # Sort by percent desc
+        out = dict(sorted(out.items(), key=lambda kv: kv[1], reverse=True))
+        return out
+    except Exception:
         return {}
 
-    dist = {}
-    for k, v in cls.items():
-        try:
-            k_int = int(k)
-        except Exception:
-            continue
-        label = land_types.get(k_int, ('Unknown' if is_en else 'Bilinmiyor'))
-        dist[label] = round(v / total * 100.0, 1)
-
-    # sort by share desc
-    return dict(sorted(dist.items(), key=lambda kv: kv[1], reverse=True))
 
 def get_flora(roi, month_arg, season_meta=None, lang="tr"):
     try:
@@ -2186,7 +1981,7 @@ def get_flora(roi, month_arg, season_meta=None, lang="tr"):
             label = "Bare / Built-up" if is_en else "Çıplak Zemin / Yapılaşma"
 
         # --- Landcover distribution (fixes the "Tip: Su Kütlesi" false label) ---
-        dist = _worldcover_distribution(roi, is_en=is_en)
+        dist = _worldcover_distribution(roi)
         if dist:
             top = list(dist.items())[:3]
             lc_str = " | ".join([f"{k}: %{v}" for k, v in top])
@@ -2200,7 +1995,7 @@ def get_flora(roi, month_arg, season_meta=None, lang="tr"):
 
     except Exception as e:
         print(f"Flora Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": ("System error" if str(lang).lower().startswith("en") else "Sistem Hatası"), "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "Sistem Hatası", "status": "Pasif"}
 
 
 # ----------------------------
@@ -2221,48 +2016,31 @@ def precip_score_from_mm(mm):
     return 50
 
 
-
-
-def get_precipitation(roi, month_arg, lang="en"):
+def get_precipitation(roi, month_arg):
     try:
         start_date, end_date, date_info = resolve_date_window(month_arg)
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
 
-        is_en = str(lang).lower().startswith("en")
-
         chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(start_str, end_str).filterBounds(roi)
         count = chirps.size().getInfo()
         if not count or count == 0:
-            return {
-                "val": 0,
-                "score": None,
-                "label": ("No data" if is_en else "Veri Yok"),
-                "desc": ("No CHIRPS precipitation data found" if is_en else "CHIRPS yağış verisi bulunamadı"),
-                "status": "Pasif",
-            }
+            return {"val": 0, "score": None, "label": "Veri Yok", "desc": "CHIRPS yağış verisi bulunamadı", "status": "Pasif"}
 
         total = chirps.sum().rename("precip")
         mm = total.reduceRegion(ee.Reducer.mean(), roi, 5500).get("precip").getInfo()
         if mm is None:
-            return {
-                "val": 0,
-                "score": None,
-                "label": ("No data" if is_en else "Veri Yok"),
-                "desc": ("Could not retrieve precipitation value" if is_en else "Yağış değeri alınamadı"),
-                "status": "Pasif",
-            }
+            return {"val": 0, "score": None, "label": "Veri Yok", "desc": "Yağış değeri alınamadı", "status": "Pasif"}
 
         mm = float(mm)
         score = precip_score_from_mm(mm)
         label = f"{mm:.0f} mm"
-        desc = (f"Total precipitation ({date_info}) | Source: CHIRPS" if is_en else f"Toplam Yağış ({date_info}) | Kaynak: CHIRPS")
+        desc = f"Toplam Yağış ({date_info}) | Kaynak: CHIRPS"
         return {"val": mm, "score": score, "label": label, "desc": desc, "status": "Aktif"}
 
     except Exception as e:
         print(f"Precip Error: {e}")
-        is_en = str(lang).lower().startswith("en")
-        return {"val": 0, "score": None, "label": "--", "desc": ("Analysis error" if is_en else "Analiz Hatası"), "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
 
 
 # ----------------------------
@@ -2308,48 +2086,50 @@ def aspect_score_deg(deg):
     return int(clamp(round(s), 0, 100))
 
 
+def get_elevation_full(roi):
+    try:
+        dem = ee.Image("USGS/SRTMGL1_003")
+        terrain = ee.Terrain.products(dem)
 
+        stats = terrain.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).getInfo()
 
-def get_elevation_full(lat, lon, buffer_m, is_en: bool = True):
-    """Elevation/slope/aspect from SRTM within buffer, with language-aware labels."""
-    roi = ee.Geometry.Point([lon, lat]).buffer(buffer_m)
-    srtm = ee.Image('USGS/SRTMGL1_003')
+        elev = float(stats.get("elevation", 0) or 0)
+        slope_deg = float(stats.get("slope", 0) or 0)
+        aspect = float(stats.get("aspect", 0) or 0)
 
-    elev = srtm.select('elevation')
-    slope = ee.Terrain.slope(elev)
-    aspect = ee.Terrain.aspect(elev)
+        slope_pct = math.tan(math.radians(slope_deg)) * 100.0
+        slope_pct_i = int(round(slope_pct))
+        elev_i = int(round(elev))
+        aspect_i = int(round(aspect))
 
-    stats = elev.reduceRegion(ee.Reducer.mean(), roi, 30, maxPixels=1e8).get('elevation')
-    slope_stats = slope.reduceRegion(ee.Reducer.mean(), roi, 30, maxPixels=1e8).get('slope')
-    aspect_stats = aspect.reduceRegion(ee.Reducer.mean(), roi, 30, maxPixels=1e8).get('aspect')
+        return {
+            "elevation": {
+                "val": elev_i,
+                "score": elevation_score_m(elev_i),
+                "label": f"{elev_i}m",
+                "desc": "NASA SRTM",
+                "status": "Aktif",
+            },
+            "slope": {
+                "val": f"%{slope_pct_i}",
+                "value": slope_pct_i,
+                "score": slope_score_pct(slope_pct_i),
+                "label": "Eğim",
+                "desc": "Arazi Eğimi (SRTM, derece->%)",
+                "status": "Aktif",
+            },
+            "aspect": {
+                "val": aspect_i,
+                "score": aspect_score_deg(aspect_i),
+                "label": deg_to_cardinal(aspect_i),
+                "desc": f"{aspect_i}° (Bakı)",
+                "status": "Aktif",
+            },
+        }
+    except Exception as e:
+        print(f"Topo Error: {e}")
+        return {"elevation": {}, "slope": {}, "aspect": {}}
 
-    elev_val = float(stats.getInfo()) if stats else None
-    slope_val = float(slope_stats.getInfo()) if slope_stats else None
-    aspect_val = float(aspect_stats.getInfo()) if aspect_stats else None
-
-    # Aspect direction labels
-    dirs_en = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
-    dirs_tr = ['Kuzey', 'Kuzeydoğu', 'Doğu', 'Güneydoğu', 'Güney', 'Güneybatı', 'Batı', 'Kuzeybatı']
-    dirs = dirs_en if is_en else dirs_tr
-
-    aspect_dir = None
-    if aspect_val is not None:
-        idx = int(((aspect_val + 22.5) % 360) / 45)
-        aspect_dir = dirs[idx]
-
-    elev_desc = 'Elevation (mean)' if is_en else 'Ortalama Rakım'
-    slope_desc = 'Slope (mean, degrees)' if is_en else 'Arazi Eğimi (ortalama, derece)'
-    aspect_desc = 'Aspect (mean)' if is_en else 'Bakı (ortalama)'
-
-    return {
-        'elevation_m': round(elev_val, 1) if elev_val is not None else None,
-        'slope_deg': round(slope_val, 1) if slope_val is not None else None,
-        'aspect_deg': round(aspect_val, 1) if aspect_val is not None else None,
-        'aspect_dir': aspect_dir,
-        'desc_elev': elev_desc,
-        'desc_slope': slope_desc,
-        'desc_aspect': aspect_desc
-    }
 
 # ----------------------------
 # 6) Urbanization (VIIRS night lights)
@@ -2367,35 +2147,37 @@ def urban_score_from_viirs(val):
     return 10
 
 
+def get_urban(roi):
+    try:
+        viirs = (
+            ee.ImageCollection("NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG")
+            .filterDate("2023-01-01", "2023-12-31")
+            .median()
+            .select("avg_rad")
+        )
 
+        val = viirs.reduceRegion(ee.Reducer.mean(), roi, 500).get("avg_rad").getInfo()
+        val = float(val) if val is not None else 0.0
 
-def get_urban(lat, lon, is_en: bool = True):
-    """Nighttime lights (VIIRS) proxy for human pressure."""
-    roi = ee.Geometry.Point([lon, lat]).buffer(2500)
-    viirs = ee.ImageCollection('NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG')         .filterDate('2023-01-01', '2024-01-01')         .select('avg_rad')         .mean()
+        if val < 1:
+            lbl = "Kırsal"
+        elif val > 5:
+            lbl = "Şehirleşmiş"
+        else:
+            lbl = "Banliyö"
 
-    rad = viirs.reduceRegion(ee.Reducer.mean(), roi, 500, maxPixels=1e8).get('avg_rad')
-    rad_val = float(rad.getInfo()) if rad else None
+        return {
+            "val": lbl,
+            "raw_val": val,
+            "score": urban_score_from_viirs(val),
+            "label": lbl,
+            "desc": f"Işık Endeksi: {round(val, 1)}",
+            "status": "Aktif",
+        }
+    except Exception as e:
+        print(f"Urban Error: {e}")
+        return {"val": "--", "raw_val": 0, "score": None, "label": "--", "desc": "--", "status": "Pasif"}
 
-    if rad_val is None:
-        return {'value': None, 'label': ('No data' if is_en else 'Veri yok'), 'desc': ('Night lights data unavailable.' if is_en else 'Gece ışıkları verisi alınamadı.')}
-
-    rad_val = round(rad_val, 1)
-
-    # Simple tiers
-    if rad_val < 1:
-        label_en, label_tr = 'Rural / dark', 'Kırsal'
-    elif rad_val < 5:
-        label_en, label_tr = 'Suburban', 'Banliyö'
-    elif rad_val < 15:
-        label_en, label_tr = 'Urban', 'Şehir'
-    else:
-        label_en, label_tr = 'Dense urban', 'Yoğun şehir'
-
-    label = label_en if is_en else label_tr
-    desc = (f"Light index: {rad_val}" if is_en else f"Işık Endeksi: {rad_val}")
-
-    return {'value': rad_val, 'label': label, 'desc': desc}
 
 # ----------------------------
 # 7) Settlement proximity (WorldCover Built-up)
@@ -2415,33 +2197,41 @@ def settlement_score_from_dist_km(dist_km):
     return 90
 
 
+def get_settlement(lon, lat):
+    """
+    En yakın yerleşimi kaba bir şekilde WorldCover built-up sınıfına göre arar.
+    """
+    try:
+        pt = ee.Geometry.Point([lon, lat])
 
+        wc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map")
+        built = wc.eq(50)
 
-def get_settlement(lat, lon, is_en: bool = True):
-    """Distance to nearest settlement proxy using WorldCover built-up share within buffer."""
-    # NOTE: This project currently uses a simplified proxy; keep wording honest.
-    roi = ee.Geometry.Point([lon, lat]).buffer(5000)
-    wc = ee.Image('ESA/WorldCover/v100/2020').select('Map')
-    built = wc.eq(50)
+        radii_m = [500, 2000, 5000, 10000]
+        found_m = None
 
-    built_mean = built.reduceRegion(ee.Reducer.mean(), roi, 10, maxPixels=1e8).get('Map')
-    built_share = float(built_mean.getInfo()) if built_mean else None
+        for r in radii_m:
+            v = built.reduceRegion(ee.Reducer.max(), pt.buffer(r), 10, maxPixels=1e8).get("Map").getInfo()
+            if v is not None and float(v) > 0:
+                found_m = r
+                break
 
-    if built_share is None:
-        return {'value_km': None, 'desc': ('Settlement proximity unavailable.' if is_en else 'Yerleşim yakınlığı hesaplanamadı.')}
+        if found_m is None:
+            dist_km = 11.0
+            label = ">10 km"
+            desc = "10 km içinde yerleşim tespit edilmedi (WorldCover)"
+        else:
+            dist_km = round(found_m / 1000.0, 1)
+            label = f"{dist_km} km"
+            desc = f"En yakın yerleşim ~{label} içinde (WorldCover)"
 
-    # crude mapping: higher built share => closer settlement
-    if built_share < 0.01:
-        km = 5.0
-    elif built_share < 0.05:
-        km = 2.0
-    elif built_share < 0.15:
-        km = 1.0
-    else:
-        km = 0.5
+        score = settlement_score_from_dist_km(dist_km)
+        return {"val": dist_km, "score": score, "label": label, "desc": desc, "status": "Aktif"}
 
-    desc = (f"Nearest settlement (proxy via WorldCover)" if is_en else f"En yakın yerleşim (~{km} km içinde, WorldCover)" )
-    return {'value_km': km, 'desc': desc}
+    except Exception as e:
+        print(f"Settlement Error: {e}")
+        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
+
 
 # ----------------------------
 # 8) Transport (placeholder)
@@ -2463,73 +2253,63 @@ def road_score_from_dist_m(dist_m):
     return int(round((rank - 1) * 100 / 8))
 
 
-def get_transport_overpass(lat, lon, is_en: bool = True):
-    """Find nearest road distance (km) using Overpass API."""
+def get_transport_overpass(lon, lat):
+    """Internet dependent: find nearest OSM highway (meters)."""
     try:
-        import requests
-        query = f"""[out:json][timeout:25];
-(way["highway"](around:5000,{lat},{lon}););
-out center 1;"""
-        r = requests.post("https://overpass-api.de/api/interpreter", data={'data': query}, timeout=30)
-        r.raise_for_status()
-        data = r.json()
+        url = "https://overpass-api.de/api/interpreter"
+        # First try within 5km, then widen if needed
+        for radius in (5000, 15000):
+            query = f"""
+[out:json][timeout:8];
+(
+  way[highway](around:{radius},{lat},{lon});
+);
+out center 120;
+"""
+            r = requests.post(url, data=query.encode("utf-8"), headers={"User-Agent": "BeeLocatePro/1.0"}, timeout=10)
+            if r.status_code != 200:
+                continue
+            js = r.json()
+            elems = js.get("elements", [])
+            if not elems:
+                continue
 
-        elements = data.get('elements', [])
-        if not elements:
-            return {
-                "val": None,
-                "label": "No road found" if is_en else "Yol bulunamadı",
-                "desc": "No OSM road features within 5 km" if is_en else "5 km içinde OSM yol verisi yok",
-                "status": "Pasif" if not is_en else "Passive",
-            }
+            best = None
+            for e in elems:
+                c = e.get("center")
+                if not c:
+                    continue
+                d = haversine_m(lat, lon, float(c["lat"]), float(c["lon"]))
+                if best is None or d < best:
+                    best = d
 
-        # compute min distance to way center
-        def haversine_km(lat1, lon1, lat2, lon2):
-            from math import radians, sin, cos, sqrt, atan2
-            R = 6371.0
-            dlat = radians(lat2 - lat1)
-            dlon = radians(lon2 - lon1)
-            a = sin(dlat/2)**2 + cos(radians(lat1))*cos(radians(lat2))*sin(dlon/2)**2
-            c = 2*atan2(sqrt(a), sqrt(1-a))
-            return R*c
+            if best is not None:
+                label = f"{round(best/1000, 1)} km"
+                return {
+                    "val": best,
+                    "value": best,
+                    "score": road_score_from_dist_m(best),
+                    "label": label,
+                    "desc": "En yakın yol (OSM/Overpass)",
+                    "status": "Aktif",
+                }
 
-        best = None
-        for e in elements:
-            c = e.get('center') or {}
-            if 'lat' in c and 'lon' in c:
-                d = haversine_km(lat, lon, c['lat'], c['lon'])
-                best = d if (best is None or d < best) else best
+        return {"val": 0, "score": None, "label": "--", "desc": "Yol bulunamadı (OSM)", "status": "Pasif"}
 
-        if best is None:
-            return {
-                "val": None,
-                "label": "No road found" if is_en else "Yol bulunamadı",
-                "desc": "Road geometry missing center" if is_en else "Yol geometrisi merkez bilgisi içermiyor",
-                "status": "Pasif" if not is_en else "Passive",
-            }
-
-        return {
-            "val": best,
-            "label": f"{best:.1f} km",
-            "desc": "Nearest road (OSM/Overpass)" if is_en else "En yakın yol (OSM/Overpass)",
-            "status": "Aktif" if not is_en else "Active",
-        }
     except Exception as e:
-        return {
-            "val": None,
-            "label": "Overpass error" if is_en else "Overpass hatası",
-            "desc": str(e),
-            "status": "Pasif" if not is_en else "Passive",
-        }
-def get_transport(lon, lat, is_en: bool = True):
-    # keep historic parameter order (lon, lat)
-    return get_transport_overpass(lat, lon, is_en=is_en)
+        print(f"Transport Error: {e}")
+        return {"val": 0, "score": None, "label": "--", "desc": "Yol analizi hatası", "status": "Pasif"}
+
+
+def get_transport(lon, lat):
+    # Real distance (OSM). Fallback to passive if network fails.
+    return get_transport_overpass(lon, lat)
 
 
 # ----------------------------
 # 9) Microclimate (ERA5-Land)
 # ----------------------------
-def get_era5_flight_stats(roi, is_en: bool = True):
+def get_era5_flight_stats(roi):
     """Compute flight-suitable days in last 365 days using ERA5-Land Daily Agg.
     Criteria (simple, editable):
       - 10°C <= mean temp <= 36°C
@@ -2555,8 +2335,8 @@ def get_era5_flight_stats(roi, is_en: bool = True):
                     "val": 0,
                     "score": None,
                     "label": "--",
-                    "desc": (f"ERA5 access unavailable / metadata error: {str(e_meta)[:120]}" if is_en else f"ERA5 erişimi yok / metadata alınamadı: {str(e_meta)[:120]}"),
-                    "status": "Passive" if is_en else "Pasif",
+                    "desc": f"ERA5 erişimi yok / metadata alınamadı: {str(e_meta)[:120]}",
+                    "status": "Pasif",
                 }
 
         end = datetime.now()
@@ -2646,7 +2426,7 @@ def get_era5_flight_stats(roi, is_en: bool = True):
         flight_days = ok_sum.reduceRegion(ee.Reducer.mean(), roi, 10000, maxPixels=1e8).get("ok_days").getInfo()
 
         if temp_avg is None or wind_avg is None or flight_days is None:
-            return {"val": 0, "score": None, "label": "--", "desc": ("ERA5 data could not be retrieved" if is_en else "ERA5 verisi alınamadı"), "status": ("Passive" if is_en else "Pasif")}
+            return {"val": 0, "score": None, "label": "--", "desc": "ERA5 verisi alınamadı", "status": "Pasif"}
 
         temp_avg = float(temp_avg)
         wind_avg = float(wind_avg)
@@ -2667,16 +2447,16 @@ def get_era5_flight_stats(roi, is_en: bool = True):
             "val": int(round(flight_days)),
             "value": flight_days,
             "score": sc,
-            "label": (f"{int(round(flight_days))} days/year" if is_en else f"{int(round(flight_days))} gün/yıl"),
-            "desc": (f"Flight-suitable days (ERA5-Land, 10–36°C & ≤8 m/s) | Avg: {temp_avg:.1f}°C, {wind_avg:.1f} m/s" if is_en else f"Uçuş uygun gün (ERA5-Land, 10–36°C & ≤8 m/s) | Ort: {temp_avg:.1f}°C, {wind_avg:.1f} m/s"),
-            "status": "Active" if is_en else "Aktif",
+            "label": f"{int(round(flight_days))} gün/yıl",
+            "desc": f"Uçuş uygun gün (ERA5-Land, 10–36°C & ≤8 m/s) | Ort: {temp_avg:.1f}°C, {wind_avg:.1f} m/s",
+            "status": "Aktif",
             "temp_avg_c": temp_avg,
             "wind_avg_ms": wind_avg,
         }
 
     except Exception as e:
         print(f"ERA5 Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": (f"ERA5 analysis error: {str(e)[:120]}" if is_en else f"ERA5 analizi hatası: {str(e)[:120]}"), "status": ("Passive" if is_en else "Pasif")}
+        return {"val": 0, "score": None, "label": "--", "desc": f"ERA5 analizi hatası: {str(e)[:120]}", "status": "Pasif"}
 
 
 # ----------------------------
@@ -2760,29 +2540,6 @@ def _season_label_tr(season_meta: dict):
         # Keep short in UI
         label += f" | Güven: {conf}"
 
-    return label
-
-
-def _season_label_en(season_meta: dict):
-    """Short English label for the recommended season window."""
-    if not season_meta or not isinstance(season_meta, dict):
-        return None
-    sos = season_meta.get("sos_month")
-    eos = season_meta.get("eos_month")
-    peak = season_meta.get("peak_month")
-    conf = season_meta.get("confidence", "--")
-
-    MONTH_NAMES_EN = {
-        1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
-        7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
-    }
-    label = "Recommended Season"
-    if sos and eos:
-        label += f" | Window: {MONTH_NAMES_EN.get(sos,'--')}–{MONTH_NAMES_EN.get(eos,'--')}"
-    elif peak:
-        pm = int(peak)
-        label += f" | Peak: {MONTH_NAMES_EN.get(pm,'--')}"
-    label += f" | Confidence: {conf}"
     return label
 
 
@@ -3164,8 +2921,6 @@ def build_report_context(payload: dict) -> dict:
     wind = climate.get("wind") or {}
     humidity = climate.get("humidity") or {}
 
-    unit_system = _units_normalize(payload.get("_unit_system") or payload.get("unit_system") or details.get("unit_system") or "metric")
-
     def _disp(d, fallback="--"):
         """Prefer label if meaningful, otherwise val. Avoid default \"--\" label from ensure_schema()."""
         if not isinstance(d, dict):
@@ -3228,15 +2983,15 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 3) Wind
-    wv = fmt_wind_kmh(wind.get("val") or _disp(wind), unit_system)
     cards.append(_card(
-        "Wind (current)",
-        wv["value"],
-        wv["unit"],
-        "Open-Meteo / operational weather",
-        "Strong wind can reduce foraging time and increase stress; shelter matters.",
-        "Interpreted as an operational constraint (not a long-term climate average)."
+        "Wind",
+        _disp(wind),
+        "",
+        "ERA5-Land / operational weather",
+        "Persistent strong winds reduce flight activity and increase stress.",
+        "Wind conditions affect flight feasibility; higher risk suppresses the overall score."
     ))
+
     # 4) Flight window (days)
     cards.append(_card(
         "Flight Window",
@@ -3279,15 +3034,15 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 8) Road distance
-    rd = fmt_distance_km(transport.get("val") or transport.get("distance") or transport.get("label"), unit_system)
     cards.append(_card(
         "Road Distance",
-        rd["value"],
-        rd["unit"],
+        transport.get("label", transport.get("val", "--")),
+        "",
         "OpenStreetMap / Overpass",
         "Too close can mean pollution/dust; too far increases logistics cost. Buffer matters.",
         "BeeLocate penalizes both extremes using an 'optimal distance' concept."
     ))
+
     # 9) Urbanization (night lights / human impact)
     cards.append(_card(
         "Urban Pressure",
@@ -3299,15 +3054,15 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 10) Settlement distance
-    sd = fmt_distance_km(settlement.get("val") or settlement.get("distance") or settlement.get("label"), unit_system)
     cards.append(_card(
         "Settlement Distance",
-        sd["value"],
-        sd["unit"],
+        settlement.get("label", settlement.get("val", "--")),
+        "",
         "ESA WorldCover (derived settlement layer)",
         "Being too close to settlements increases conflict, pesticide and disturbance risks.",
         "Closer settlement proximity reduces the score; a safe buffer is preferred."
     ))
+
     # 11) Flight suitability (score proxy)
     fs = flight.get("score")
     fs_label = f"{int(round(fs))}/100" if isinstance(fs,(int,float)) else "--"
@@ -3321,36 +3076,36 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 12) Precip
-    pr = fmt_precip_mm(precip.get("val") or precip.get("value") or precip.get("label"), unit_system)
     cards.append(_card(
         "Precipitation (period)",
-        pr["value"],
-        pr["unit"],
+        precip.get("val", "--"),
+        "mm",
         "CHIRPS (monthly)",
         "Rain supports forage growth, but excessive precipitation can disrupt flight and nectar flow.",
         "Interpreted together with humidity, temperature and vegetation (not a standalone verdict)."
     ))
+
     # 13) Elevation
-    ev = fmt_elevation_m(topo.get("elevation", {}).get("val", elevation.get("val", "--")), unit_system)
     cards.append(_card(
         "Elevation",
-        ev["value"],
-        ev["unit"],
+        topo.get("elevation", {}).get("val", elevation.get("val", "--")),
+        "m",
         "NASA SRTM",
         "Elevation shifts temperature and phenology; the same score can mean different things across altitudes.",
         "BeeLocate interprets elevation together with season recommendation and flight window."
     ))
+
     # 14) Temperature
-    tv = fmt_temp_c(temp.get("val") or _disp(temp), unit_system)
     cards.append(_card(
         "Temperature",
-        tv["value"],
-        tv["unit"],
+        _disp(temp),
+        "",
         "Open-Meteo (baseline: ERA5)",
         "Temperature controls key thresholds for flight and colony development.",
         "Temperature directly affects the flight window; colder tendencies suppress the score.",
         extra=[temp.get("desc")] if temp.get("desc") and temp.get("desc") != "--" else []
     ))
+
     # Backward-compat: keep `kpis` as the headline grid (now full 14 items)
     kpis = cards
 
@@ -3844,9 +3599,6 @@ def report_by_id(rid: str):
     if not payload:
         return "Report not found or expired.", 404
     payload["report_id"] = rid
-    # Units: prefer explicit query param, then stored payload, default metric.
-    unit_system = _units_normalize(request.args.get('units') or payload.get('unit_system') or (payload.get('details') or {}).get('unit_system') or 'metric')
-    payload['_unit_system'] = unit_system
     # New product rule: no preview report. Report access is paid-only.
     if not _is_paid(rid):
         return redirect(url_for("buy_report", rid=rid))
@@ -3864,9 +3616,6 @@ def report_pdf(rid: str):
     if not payload:
         return "Report not found or expired.", 404
     payload["report_id"] = rid
-    # Units: prefer explicit query param, then stored payload, default metric.
-    unit_system = _units_normalize(request.args.get('units') or payload.get('unit_system') or (payload.get('details') or {}).get('unit_system') or 'metric')
-    payload['_unit_system'] = unit_system
     if not _is_paid(rid):
         # Not paid: send user to purchase flow (or BYPASS test checkout in dev).
         return redirect(url_for("buy_report", rid=rid))
@@ -3915,16 +3664,9 @@ def analyze():
             return jsonify({"ok": False, "error": msg_rl}), 429
 
         # Language hint (used only for labels/text; computation is language-agnostic)
-        # EN-first by default; other languages are opt-in.
-        # Source order: query (?lang=tr), header (X-Lang), cookie (blp_lang), then EN.
-        lang = (request.args.get('lang')
-                or request.headers.get('X-Lang')
-                or request.cookies.get('blp_lang')
-                or getattr(g, 'lang', None)
-                or 'en')
-        lang = str(lang).lower().strip()
-        is_en = (lang == 'en')
-        unit_system = _units_normalize(d.get('units') or request.headers.get('X-Units') or request.args.get('units') or 'metric')
+        # MVP decision: English-only UI/text for now.
+        # (i18n keys exist; we'll re-enable language switching in FAZ-4.)
+        lang = 'en'
 
         lat = d.get("lat")
         lon = d.get("lon") or d.get("lng")
@@ -3997,16 +3739,12 @@ def analyze():
 
         flora = get_flora(roi, target_month, season_meta=season_meta, lang=lang)
         water = get_water_hybrid(roi, lang=lang)
-        # Elevation/topography summary
-        buffer_m = rad  # scan radius in meters
-        topo = get_elevation_full(lat, lon, buffer_m, is_en=is_en)
+        topo = get_elevation_full(roi)
         clim = get_climate_smart(lat, lon)
-        # get_urban expects (lat, lon). Passing roi here crashes runtime.
-        urban = get_urban(lat, lon, is_en=is_en)
-        transport = get_transport(lon, lat, is_en=is_en)
-        precip = get_precipitation(roi, target_month_for_precip, lang=lang)
-        # get_settlement expects (lat, lon). Keep ordering consistent.
-        settlement = get_settlement(lat, lon, is_en=is_en)
+        urban = get_urban(roi)
+        transport = get_transport(lon, lat)
+        precip = get_precipitation(roi, target_month_for_precip)
+        settlement = get_settlement(lon, lat)
         flight = get_era5_flight_stats(roi)
         flight_suitability = make_flight_suitability(flight, lang=lang)
 
@@ -4066,12 +3804,10 @@ def analyze():
 
         resp = {
             "score": score,
-            "unit_system": unit_system,
             "lat": lat,
             "lon": lon,
             "lng": lon,
             "details": {
-                "unit_system": unit_system,
                 "season_meta": season_meta or {},
                 "flora": ensure_schema(flora),
                 "water": ensure_schema(water),
@@ -4114,26 +3850,26 @@ def analyze():
         return jsonify(
             {
                 "score": 0,
-                "sys_msg": ("System error" if is_en else "Sistem Hatası"),
+                "sys_msg": "Sistem Hatası",
                 "details": {
-                    "flora": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                    "water": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                    "urban": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                    "transport": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                    "precip": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                    "settlement": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                    "elevation": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                    "slope": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                    "aspect": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                    "flora": ensure_schema({}, default_label="Hata"),
+                    "water": ensure_schema({}, default_label="Hata"),
+                    "urban": ensure_schema({}, default_label="Hata"),
+                    "transport": ensure_schema({}, default_label="Hata"),
+                    "precip": ensure_schema({}, default_label="Hata"),
+                    "settlement": ensure_schema({}, default_label="Hata"),
+                    "elevation": ensure_schema({}, default_label="Hata"),
+                    "slope": ensure_schema({}, default_label="Hata"),
+                    "aspect": ensure_schema({}, default_label="Hata"),
                     "climate": {
-                        "temp": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                        "wind": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                        "humidity": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                        "temp": ensure_schema({}, default_label="Hata"),
+                        "wind": ensure_schema({}, default_label="Hata"),
+                        "humidity": ensure_schema({}, default_label="Hata"),
                     },
                     "topography": {
-                        "elevation": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                        "slope": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
-                        "aspect": ensure_schema({}, default_label=("Error" if is_en else "Hata")),
+                        "elevation": ensure_schema({}, default_label="Hata"),
+                        "slope": ensure_schema({}, default_label="Hata"),
+                        "aspect": ensure_schema({}, default_label="Hata"),
                     },
                 },
             }

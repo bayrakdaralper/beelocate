@@ -95,7 +95,7 @@
                 <span class="material-symbols-outlined text-gray-400 text-lg">search</span>
                 <input id="search-input"
                     class="bg-transparent border-none text-white text-sm w-full ml-2 focus:outline-none placeholder-gray-500"
-                    placeholder="{{ t('search_placeholder') }}" onkeypress="handleSearch(event)">
+                    placeholder="Search location... (e.g., Sarıcakaya)" onkeypress="handleSearch(event)">
             </div>
             <div>
                 <div class="flex justify-between text-[10px] text-gray-400 mb-2 font-bold uppercase tracking-wider">
@@ -128,7 +128,7 @@
 
         <div class="space-y-1 text-center">
             <div id="loading-text" class="text-green-400 text-xs font-bold uppercase tracking-widest animate-pulse">
-                {{ t('system_initializing') }}
+                SİSTEM BAŞLATILIYOR...
             </div>
             <div class="text-[10px] text-green-700/60" id="loading-sub">
                 BeeLocate Terminal v4.2
@@ -166,23 +166,24 @@
                         class="hidden md:block text-[10px] uppercase font-bold text-primary tracking-wider mr-2 animate-pulse">
                         <!-- JS Injected Title -->
                     </div>
-                    <label class="text-[10px] uppercase font-bold text-gray-500 tracking-wider hidden md:block">{{ t('analysis_period') }}</label>
+                    <label class="text-[10px] uppercase font-bold text-gray-500 tracking-wider hidden md:block">Analiz
+                        Dönemi:</label>
                     <select id="month-selector" onchange="updateMonth(this.value)"
                         class="bg-black/40 border border-white/10 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-primary/50 transition cursor-pointer">
-                        <option value="season" selected>🌿 {{ t('recommended_season') }}</option>
-                        <option value="current">⚡ {{ t('live_now') }}</option>
-                        <option value="1">{{ t('month_sim', month='January') }}</option>
-                        <option value="2">{{ t('month_sim', month='February') }}</option>
-                        <option value="3">{{ t('month_sim', month='March') }}</option>
-                        <option value="4">{{ t('month_sim', month='April') }}</option>
-                        <option value="5">{{ t('month_sim', month='May') }}</option>
-                        <option value="6">{{ t('month_sim', month='June') }}</option>
-                        <option value="7">{{ t('month_sim', month='July') }}</option>
-                        <option value="8">{{ t('month_sim', month='August') }}</option>
-                        <option value="9">{{ t('month_sim', month='September') }}</option>
-                        <option value="10">{{ t('month_sim', month='October') }}</option>
-                        <option value="11">{{ t('month_sim', month='November') }}</option>
-                        <option value="12">{{ t('month_sim', month='December') }}</option>
+                        <option value="season" selected>🌿 RECOMMENDED SEASON (Fenoloji)</option>
+                        <option value="current">⚡ CANLI / ŞU AN</option>
+                        <option value="1">OCAK (Simülasyon)</option>
+                        <option value="2">ŞUBAT (Simülasyon)</option>
+                        <option value="3">MART (Simülasyon)</option>
+                        <option value="4">NİSAN (Simülasyon)</option>
+                        <option value="5">MAYIS (Simülasyon)</option>
+                        <option value="6">HAZİRAN (Simülasyon)</option>
+                        <option value="7">TEMMUZ (Simülasyon)</option>
+                        <option value="8">AĞUSTOS (Simülasyon)</option>
+                        <option value="9">EYLÜL (Simülasyon)</option>
+                        <option value="10">EKİM (Simülasyon)</option>
+                        <option value="11">KASIM (Simülasyon)</option>
+                        <option value="12">ARALIK (Simülasyon)</option>
                     </select>
 
                     <button id="water-managed-btn" type="button" aria-pressed="false" onclick="toggleWaterManaged()"
@@ -190,13 +191,6 @@
                         <span class="material-symbols-outlined text-base text-primary group-aria-[pressed=true]:text-yellow-300">water_drop</span>
                         <span id="water-managed-label">Managed Water</span>
                     </button>
-
-                    <button id="units-btn" type="button" aria-pressed="false" onclick="toggleUnits()"
-                        class="group inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition text-xs font-bold text-gray-300">
-                        <span class="material-symbols-outlined text-base text-primary">straighten</span>
-                        <span id="units-label">Metric</span>
-                    </button>
-
 
                     <button onclick="closeModal()"
                         class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition">
@@ -212,7 +206,8 @@
                     <div
                         class="flex-1 bg-white/5 p-6 rounded-2xl border border-white/5 flex items-center justify-between">
                         <div>
-                            <div class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">{{ t('land_suitability') }}</div>
+                            <div class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">ARAZİ UYGUNLUK
+                                PUANI</div>
                             <div class="flex items-baseline gap-2">
                                 <span class="text-6xl font-black text-primary" id="score-val">0</span>
                                 <span class="text-xl text-gray-500 font-bold">/100</span>
@@ -232,7 +227,10 @@
                     <div class="flex-1 bg-white/5 p-6 rounded-2xl border border-white/5 flex items-center">
                         <div class="w-full">
                             <div id="sys-title" class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-3">SUMMARY</div>
-                            <div class="prose prose-invert prose-sm text-sm text-gray-300 leading-snug" id="dynamic-text">{{ t('summary_placeholder') }}</div>
+                            <div class="prose prose-invert prose-sm text-sm text-gray-300 leading-snug"
+                                id="dynamic-text">
+                                ...
+                            </div>
                         </div>
                     </div>
                 </div>
