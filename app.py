@@ -7,7 +7,6 @@ import os
 import ee
 import requests
 from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for, g
-import calendar
 
 
 # ----------------------------
@@ -2013,39 +2012,43 @@ def get_water_hybrid(roi, lang="en"):
 
 
 def get_climate_smart(lat, lon, is_en: bool = True):
-    """Monthly precipitation (CHIRPS daily → monthly sum) around point (buffer)."""
+    """Monthly precipitation (CHIRPS) around point (buffer), with human-readable summary.
+
+    NOTE: Earth Engine dictionaries throw if you call .get(key) for a missing key *without* a default.
+    This function must never crash the whole /analyze pipeline when precipitation is missing.
+    """
     roi = ee.Geometry.Point([lon, lat]).buffer(2500)
+    year = datetime.utcnow().year
+    month = datetime.utcnow().month
 
-    now = datetime.utcnow()
-    year = now.year
-    month = now.month
-    last_day = calendar.monthrange(year, month)[1]
+    # Keep date window behavior stable (1..28) to avoid product-behavior surprises.
+    chirps = (ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+              .filterDate(f"{year}-{month:02d}-01", f"{year}-{month:02d}-28")
+              .sum())
 
-    # CHIRPS daily → sum over the month (band name is usually 'precipitation')
-    chirps_month = (
-        ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
-        .filterDate(f"{year}-{month:02d}-01", f"{year}-{month:02d}-{last_day:02d}")
-        .sum()
-    )
-
-    stats = chirps_month.reduceRegion(
+    stats = ee.Dictionary(chirps.reduceRegion(
         reducer=ee.Reducer.mean(),
         geometry=roi,
         scale=5000,
         maxPixels=1e8
-    )
+    ))
 
-    # IMPORTANT: EE Dictionary.get without default HARD-FAILS if key is missing.
-    # Use defaults + fallbacks to avoid crashing the whole analysis.
-    precip_obj = stats.get(
-        'precipitation',
-        stats.get('precip', stats.get('total_precipitation', stats.get('ppt', None)))
-    )
+    # Band/name fallbacks across datasets & reducers.
+    precip_obj = stats.get('precipitation',
+                   stats.get('ppt',
+                     stats.get('precip',
+                       stats.get('total_precipitation', None)
+                     )
+                   ))
 
-    precip_val_raw = precip_obj.getInfo() if precip_obj is not None else None
+    precip_val = None
     try:
-        precip_val = float(precip_val_raw) if precip_val_raw is not None else None
+        if precip_obj is not None:
+            precip_val = precip_obj.getInfo()
+            if precip_val is not None:
+                precip_val = float(precip_val)
     except Exception:
+        # Do not crash analysis for missing/empty precipitation results.
         precip_val = None
 
     if precip_val is None:
@@ -2054,9 +2057,9 @@ def get_climate_smart(lat, lon, is_en: bool = True):
 
     precip_val = round(precip_val, 1)
     if is_en:
-        desc = f"Mean monthly precipitation in buffer ({year}-{month:02d}) | Source: CHIRPS"
+        desc = f"Total precipitation ({year}-{month:02d}) | Source: CHIRPS"
     else:
-        desc = f"Tampon alanda aylık ortalama yağış ({year}-{month:02d}) | Kaynak: CHIRPS"
+        desc = f"Toplam Yağış ({year}-{month:02d}) | Kaynak: CHIRPS"
 
     return {'value': precip_val, 'unit': 'mm', 'desc': desc}
 
