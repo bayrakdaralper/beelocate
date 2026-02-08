@@ -1950,14 +1950,19 @@ def get_sentinel_collection_safe(roi, start_date, end_date):
 # 1) Water (hybrid)
 # ----------------------------
 def get_water_hybrid(roi, lang="en"):
+    """Hybrid water detection.
+
+    Uses JRC Global Surface Water (occurrence) + recent Sentinel-2 NDWI max.
+    Returns a normalized 0/100 water signal with human-readable labels.
+    """
+    is_en = str(lang).lower().startswith("en")
     try:
         # A) JRC Global Surface Water (occurrence)
         jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
         jrc_val = jrc.reduceRegion(ee.Reducer.max(), roi, 30).get("occurrence").getInfo()
 
-        # B) Sentinel-2 NDWI max
+        # B) Sentinel-2 NDWI max (last ~60 days)
         s2_img = get_sentinel_collection_safe(roi, datetime.now() - timedelta(days=60), datetime.now())
-
         ndwi_max = 0.0
         if s2_img:
             ndwi = s2_img.normalizedDifference(["B3", "B8"])  # Green - NIR
@@ -1965,24 +1970,43 @@ def get_water_hybrid(roi, lang="en"):
             if ndwi_val is not None:
                 ndwi_max = float(ndwi_val)
 
-        
-if (jrc_val is not None and float(jrc_val) > 50) or (ndwi_max > 0.1):
-    is_en = str(lang).lower().startswith("en")
-    src = ("Permanent water (JRC Global Surface Water)" if (jrc_val is not None and float(jrc_val) > 50) else "Live detection (Satellite NDWI)") if is_en else ("Kalıcı Su (JRC Global Water)" if (jrc_val is not None and float(jrc_val) > 50) else "Canlı Tespit (Uydu NDWI)")
-    return {"val": 100, "score": 100, "label": ("Water Available" if is_en else "Su Kaynağı Var"), "desc": src, "status": "Aktif"}
+        has_water = (jrc_val is not None and float(jrc_val) > 50) or (ndwi_max > 0.1)
 
-    return {"val": 100, "score": 100, "label": ("Water Available" if is_en else "Su Kaynağı Var"), "desc": src, "status": "Aktif"}
+        if has_water:
+            src = (
+                "Permanent water (JRC Global Surface Water)"
+                if (jrc_val is not None and float(jrc_val) > 50)
+                else "Live detection (Satellite NDWI)"
+            )
+            return {
+                "val": 100,
+                "score": 100,
+                "label": "Water Available" if is_en else "Su Kaynağı Var",
+                "desc": src if is_en else ("Kalıcı Su (JRC Global Water)" if (jrc_val is not None and float(jrc_val) > 50) else "Canlı Tespit (Uydu NDWI)"),
+                "status": "Active" if is_en else "Aktif",
+            }
 
-        is_en = str(lang).lower().startswith("en")
-        return {"val": 0, "score": 0, "label": ("No Water Detected" if is_en else "Su Yok"), "desc": ("No surface water detected nearby" if is_en else "Yakınlarda su tespit edilemedi"), "status": "Aktif"}
+        return {
+            "val": 0,
+            "score": 0,
+            "label": "No Water Detected" if is_en else "Su Yok",
+            "desc": "No surface water detected nearby" if is_en else "Yakınlarda su tespit edilemedi",
+            "status": "Active" if is_en else "Aktif",
+        }
 
     except Exception as e:
         print(f"Water Error: {e}")
-        is_en = str(lang).lower().startswith("en")
-        return {"val": 0, "score": None, "label": "--", "desc": ("Analysis error" if is_en else "Analiz Hatası"), "status": "Pasif"}
+        return {
+            "val": 0,
+            "score": None,
+            "label": "--",
+            "desc": "Analysis error" if is_en else "Analiz Hatası",
+            "status": "Inactive" if is_en else "Pasif",
+        }
 
 
 # ----------------------------
+
 # 2) Climate (Open-Meteo live)
 # ----------------------------
 
