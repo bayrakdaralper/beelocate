@@ -6,7 +6,7 @@ import os
 
 import ee
 import requests
-from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for
+from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for, g
 
 
 # ----------------------------
@@ -34,37 +34,8 @@ def init_gee():
     global GEE_OK, GEE_ERR
     project = os.environ.get('EE_PROJECT', 'beelocatepro-ee')
 
-    # 1) Preferred (production): Service Account JSON from a FILE (Render Secret File)
-    # In containers, putting large JSON blobs into env vars is fragile (line breaks / quoting).
-    # We therefore support reading the service account key from a mounted secret file.
-    #
-    # Accepted env vars (first match wins):
-    # - GEE_SA_PATH (our app-specific path)
-    # - GOOGLE_APPLICATION_CREDENTIALS (Google standard)
-    sa_path = os.environ.get('GEE_SA_PATH') or os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-    if sa_path and os.path.exists(sa_path):
-        try:
-            import json as _json
-            with open(sa_path, 'r', encoding='utf-8') as f:
-                info = _json.load(f)
-            client_email = info.get('client_email')
-            project_id = info.get('project_id') or project
-            if not client_email:
-                raise ValueError('Service account JSON missing client_email')
-
-            credentials = ee.ServiceAccountCredentials(client_email, sa_path)
-            ee.Initialize(credentials, project=project_id)
-            GEE_OK = True
-            GEE_ERR = ''
-            print(f'GEE: Service Account Auth OK (project={project_id})')
-            return
-        except Exception as e_sa:
-            GEE_OK = False
-            GEE_ERR = str(e_sa)
-            print(f"GEE Service Account Auth Failed (file): {e_sa}")
-
-    # 1b) Backward compatible: Service Account JSON via env (NOT recommended)
-    # Keeps older deployments working, but prefer the file-based method above.
+    # 1) Preferred (production): Service Account JSON via env
+    # Render/containers cannot run interactive auth or rely on gcloud.
     sa_json = os.environ.get('GEE_SERVICE_ACCOUNT_JSON')
     if sa_json:
         try:
@@ -146,6 +117,27 @@ except Exception:
 
 app = Flask(__name__)
 
+# --- i18n (EN-first, but ready for expansion) ---
+try:
+    from i18n import get_lang as _get_lang, t as _t
+except Exception:
+    _get_lang = lambda x=None: "en"  # noqa: E731
+    _t = lambda k, lang="en", **kw: k  # noqa: E731
+
+
+@app.before_request
+def _set_lang_context():
+    # Keep it simple for MVP: default EN, but allow ?lang=TR later.
+    g.lang = _get_lang(request.args.get("lang"))
+
+
+@app.context_processor
+def _inject_i18n():
+    return {
+        "LANG": getattr(g, "lang", "en"),
+        "t": lambda key, **kw: _t(key, getattr(g, "lang", "en"), **kw),
+    }
+
 
 
 # ----------------------------
@@ -196,7 +188,12 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None
 
-DB_PATH = os.environ.get("BLP_DB_PATH", str(Path(app.root_path) / "blp.sqlite"))
+_default_db = str(Path(app.root_path) / "blp.sqlite")
+# Render Disks are commonly mounted at /var/data. If present, default there so
+# purchases and reports survive redeploys.
+if os.path.isdir("/var/data"):
+    _default_db = "/var/data/blp.sqlite"
+DB_PATH = os.environ.get("BLP_DB_PATH", _default_db)
 REPORT_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 PAID_TTL_SECONDS = 60 * 60 * 24 * 30   # 30 days
 
@@ -412,6 +409,14 @@ def _ai_compose_prompt(payload: dict) -> str:
     wind = climate.get('wind') or {}
     humidity = climate.get('humidity') or {}
 
+    unit_system = _units_normalize(payload.get("_unit_system") or payload.get("unit_system") or details.get("unit_system") or "metric")
+
+    rd_u = fmt_distance_km(transport.get("val") or transport.get("label"), unit_system)
+    sd_u = fmt_distance_km((details.get("settlement") or {}).get("val") if isinstance(details.get("settlement"), dict) else None, unit_system)
+    ev_u = fmt_elevation_m((topo.get("elevation") or {}).get("val"), unit_system)
+    pr_u = fmt_precip_mm(precip.get("val") or precip.get("label"), unit_system)
+    tv_u = fmt_temp_c(temp.get("val") or temp.get("label"), unit_system)
+    wv_u = fmt_wind_kmh(wind.get("val") or wind.get("label"), unit_system)
     transport = details.get('transport') or details.get('road') or details.get('roads') or {}
     urban = details.get('urban') or details.get('urbanization') or details.get('human') or {}
     settlement = details.get('settlement') or details.get('settlements') or details.get('residential') or {}
@@ -449,6 +454,8 @@ def _ai_compose_prompt(payload: dict) -> str:
     lines = []
     lines.append("You are BeeLocate PRO. Write premium decision-support commentary for a PAID beekeeping site report.")
     lines.append("Write in clear English. Be direct. No marketing fluff. No guarantees.")
+    lines.append(f"Preferred unit system: {unit_system}. Use these units for distances, elevation, precipitation, temperature, and wind.")
+    lines.append(f"Converted snapshot: Road distance {rd_u['value']} {rd_u['unit']}; Elevation {ev_u['value']} {ev_u['unit']}; Precip {pr_u['value']} {pr_u['unit']}; Temp {tv_u['value']} {tv_u['unit']}; Wind {wv_u['value']} {wv_u['unit']}.")
     lines.append("Use only the data below. If a value is missing, say it's missing and explain the implication.")
     lines.append("Return JSON only (no markdown, no code fences).")
     lines.append("")
@@ -531,6 +538,96 @@ def _deterministic_insights(payload: dict) -> dict:
         except Exception:
             return None
 
+
+# ----------------------------
+# Units (Metric / Imperial)
+# ----------------------------
+def _units_normalize(u: str | None) -> str:
+    u = (u or "").strip().lower()
+    return "imperial" if u in ("imperial", "us", "uscs", "english") else "metric"
+
+def _km_to_mi(km: float) -> float:
+    return float(km) * 0.621371
+
+def _m_to_ft(m: float) -> float:
+    return float(m) * 3.28084
+
+def _mm_to_in(mm: float) -> float:
+    return float(mm) / 25.4
+
+def _c_to_f(c: float) -> float:
+    return float(c) * 9.0/5.0 + 32.0
+
+def _kmh_to_mph(kmh: float) -> float:
+    return float(kmh) * 0.621371
+
+def _num_from_any(x):
+    """Extract a float from numbers or strings like '12.3 km' / '18°C'."""
+    if x is None:
+        return None
+    if isinstance(x, (int, float)):
+        try:
+            return float(x)
+        except Exception:
+            return None
+    s = str(x)
+    m = re.search(r"-?\d+(?:\.\d+)?", s)
+    if not m:
+        return None
+    try:
+        return float(m.group(0))
+    except Exception:
+        return None
+
+def fmt_distance_km(km, unit_system: str = "metric", nd: int = 1):
+    kmv = _num_from_any(km)
+    if kmv is None:
+        return {"value": "--", "unit": ""}
+    us = _units_normalize(unit_system)
+    if us == "imperial":
+        mi = _km_to_mi(kmv)
+        return {"value": f"{mi:.{nd}f}", "unit": "mi"}
+    return {"value": f"{kmv:.{nd}f}", "unit": "km"}
+
+def fmt_elevation_m(meters, unit_system: str = "metric", nd: int = 0):
+    mv = _num_from_any(meters)
+    if mv is None:
+        return {"value": "--", "unit": ""}
+    us = _units_normalize(unit_system)
+    if us == "imperial":
+        ft = _m_to_ft(mv)
+        return {"value": f"{ft:.{nd}f}", "unit": "ft"}
+    return {"value": f"{mv:.{nd}f}", "unit": "m"}
+
+def fmt_precip_mm(mm, unit_system: str = "metric", nd: int = 0):
+    mv = _num_from_any(mm)
+    if mv is None:
+        return {"value": "--", "unit": ""}
+    us = _units_normalize(unit_system)
+    if us == "imperial":
+        inch = _mm_to_in(mv)
+        return {"value": f"{inch:.{nd}f}", "unit": "in"}
+    return {"value": f"{mv:.{nd}f}", "unit": "mm"}
+
+def fmt_temp_c(c, unit_system: str = "metric", nd: int = 0):
+    cv = _num_from_any(c)
+    if cv is None:
+        return {"value": "--", "unit": ""}
+    us = _units_normalize(unit_system)
+    if us == "imperial":
+        f = _c_to_f(cv)
+        return {"value": f"{f:.{nd}f}", "unit": "°F"}
+    return {"value": f"{cv:.{nd}f}", "unit": "°C"}
+
+def fmt_wind_kmh(kmh, unit_system: str = "metric", nd: int = 0):
+    v = _num_from_any(kmh)
+    if v is None:
+        return {"value": "--", "unit": ""}
+    us = _units_normalize(unit_system)
+    if us == "imperial":
+        mph = _kmh_to_mph(v)
+        return {"value": f"{mph:.{nd}f}", "unit": "mph"}
+    return {"value": f"{v:.{nd}f}", "unit": "km/h"}
     score = g(["score"], g(["overall_score"], 0)) or 0
 
     cards = g(["cards"], {}) or {}
@@ -2309,7 +2406,7 @@ def get_transport(lon, lat):
 # ----------------------------
 # 9) Microclimate (ERA5-Land)
 # ----------------------------
-def get_era5_flight_stats(roi):
+def get_era5_flight_stats(roi, is_en: bool = True):
     """Compute flight-suitable days in last 365 days using ERA5-Land Daily Agg.
     Criteria (simple, editable):
       - 10°C <= mean temp <= 36°C
@@ -2335,8 +2432,8 @@ def get_era5_flight_stats(roi):
                     "val": 0,
                     "score": None,
                     "label": "--",
-                    "desc": f"ERA5 erişimi yok / metadata alınamadı: {str(e_meta)[:120]}",
-                    "status": "Pasif",
+                    "desc": (f"ERA5 access unavailable / metadata error: {str(e_meta)[:120]}" if is_en else f"ERA5 erişimi yok / metadata alınamadı: {str(e_meta)[:120]}"),
+                    "status": "Passive" if is_en else "Pasif",
                 }
 
         end = datetime.now()
@@ -2426,7 +2523,7 @@ def get_era5_flight_stats(roi):
         flight_days = ok_sum.reduceRegion(ee.Reducer.mean(), roi, 10000, maxPixels=1e8).get("ok_days").getInfo()
 
         if temp_avg is None or wind_avg is None or flight_days is None:
-            return {"val": 0, "score": None, "label": "--", "desc": "ERA5 verisi alınamadı", "status": "Pasif"}
+            return {"val": 0, "score": None, "label": "--", "desc": ("ERA5 data could not be retrieved" if is_en else "ERA5 verisi alınamadı"), "status": ("Passive" if is_en else "Pasif")}
 
         temp_avg = float(temp_avg)
         wind_avg = float(wind_avg)
@@ -2447,16 +2544,16 @@ def get_era5_flight_stats(roi):
             "val": int(round(flight_days)),
             "value": flight_days,
             "score": sc,
-            "label": f"{int(round(flight_days))} gün/yıl",
-            "desc": f"Uçuş uygun gün (ERA5-Land, 10–36°C & ≤8 m/s) | Ort: {temp_avg:.1f}°C, {wind_avg:.1f} m/s",
-            "status": "Aktif",
+            "label": (f"{int(round(flight_days))} days/year" if is_en else f"{int(round(flight_days))} gün/yıl"),
+            "desc": (f"Flight-suitable days (ERA5-Land, 10–36°C & ≤8 m/s) | Avg: {temp_avg:.1f}°C, {wind_avg:.1f} m/s" if is_en else f"Uçuş uygun gün (ERA5-Land, 10–36°C & ≤8 m/s) | Ort: {temp_avg:.1f}°C, {wind_avg:.1f} m/s"),
+            "status": "Active" if is_en else "Aktif",
             "temp_avg_c": temp_avg,
             "wind_avg_ms": wind_avg,
         }
 
     except Exception as e:
         print(f"ERA5 Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": f"ERA5 analizi hatası: {str(e)[:120]}", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": (f"ERA5 analysis error: {str(e)[:120]}" if is_en else f"ERA5 analizi hatası: {str(e)[:120]}"), "status": ("Passive" if is_en else "Pasif")}
 
 
 # ----------------------------
@@ -2540,6 +2637,29 @@ def _season_label_tr(season_meta: dict):
         # Keep short in UI
         label += f" | Güven: {conf}"
 
+    return label
+
+
+def _season_label_en(season_meta: dict):
+    """Short English label for the recommended season window."""
+    if not season_meta or not isinstance(season_meta, dict):
+        return None
+    sos = season_meta.get("sos_month")
+    eos = season_meta.get("eos_month")
+    peak = season_meta.get("peak_month")
+    conf = season_meta.get("confidence", "--")
+
+    MONTH_NAMES_EN = {
+        1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
+        7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
+    }
+    label = "Recommended Season"
+    if sos and eos:
+        label += f" | Window: {MONTH_NAMES_EN.get(sos,'--')}–{MONTH_NAMES_EN.get(eos,'--')}"
+    elif peak:
+        pm = int(peak)
+        label += f" | Peak: {MONTH_NAMES_EN.get(pm,'--')}"
+    label += f" | Confidence: {conf}"
     return label
 
 
@@ -2921,6 +3041,8 @@ def build_report_context(payload: dict) -> dict:
     wind = climate.get("wind") or {}
     humidity = climate.get("humidity") or {}
 
+    unit_system = _units_normalize(payload.get("_unit_system") or payload.get("unit_system") or details.get("unit_system") or "metric")
+
     def _disp(d, fallback="--"):
         """Prefer label if meaningful, otherwise val. Avoid default \"--\" label from ensure_schema()."""
         if not isinstance(d, dict):
@@ -2983,15 +3105,15 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 3) Wind
+    wv = fmt_wind_kmh(wind.get("val") or _disp(wind), unit_system)
     cards.append(_card(
-        "Wind",
-        _disp(wind),
-        "",
-        "ERA5-Land / operational weather",
-        "Persistent strong winds reduce flight activity and increase stress.",
-        "Wind conditions affect flight feasibility; higher risk suppresses the overall score."
+        "Wind (current)",
+        wv["value"],
+        wv["unit"],
+        "Open-Meteo / operational weather",
+        "Strong wind can reduce foraging time and increase stress; shelter matters.",
+        "Interpreted as an operational constraint (not a long-term climate average)."
     ))
-
     # 4) Flight window (days)
     cards.append(_card(
         "Flight Window",
@@ -3034,15 +3156,15 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 8) Road distance
+    rd = fmt_distance_km(transport.get("val") or transport.get("distance") or transport.get("label"), unit_system)
     cards.append(_card(
         "Road Distance",
-        transport.get("label", transport.get("val", "--")),
-        "",
+        rd["value"],
+        rd["unit"],
         "OpenStreetMap / Overpass",
         "Too close can mean pollution/dust; too far increases logistics cost. Buffer matters.",
         "BeeLocate penalizes both extremes using an 'optimal distance' concept."
     ))
-
     # 9) Urbanization (night lights / human impact)
     cards.append(_card(
         "Urban Pressure",
@@ -3054,15 +3176,15 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 10) Settlement distance
+    sd = fmt_distance_km(settlement.get("val") or settlement.get("distance") or settlement.get("label"), unit_system)
     cards.append(_card(
         "Settlement Distance",
-        settlement.get("label", settlement.get("val", "--")),
-        "",
+        sd["value"],
+        sd["unit"],
         "ESA WorldCover (derived settlement layer)",
         "Being too close to settlements increases conflict, pesticide and disturbance risks.",
         "Closer settlement proximity reduces the score; a safe buffer is preferred."
     ))
-
     # 11) Flight suitability (score proxy)
     fs = flight.get("score")
     fs_label = f"{int(round(fs))}/100" if isinstance(fs,(int,float)) else "--"
@@ -3076,36 +3198,36 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 12) Precip
+    pr = fmt_precip_mm(precip.get("val") or precip.get("value") or precip.get("label"), unit_system)
     cards.append(_card(
         "Precipitation (period)",
-        precip.get("val", "--"),
-        "mm",
+        pr["value"],
+        pr["unit"],
         "CHIRPS (monthly)",
         "Rain supports forage growth, but excessive precipitation can disrupt flight and nectar flow.",
         "Interpreted together with humidity, temperature and vegetation (not a standalone verdict)."
     ))
-
     # 13) Elevation
+    ev = fmt_elevation_m(topo.get("elevation", {}).get("val", elevation.get("val", "--")), unit_system)
     cards.append(_card(
         "Elevation",
-        topo.get("elevation", {}).get("val", elevation.get("val", "--")),
-        "m",
+        ev["value"],
+        ev["unit"],
         "NASA SRTM",
         "Elevation shifts temperature and phenology; the same score can mean different things across altitudes.",
         "BeeLocate interprets elevation together with season recommendation and flight window."
     ))
-
     # 14) Temperature
+    tv = fmt_temp_c(temp.get("val") or _disp(temp), unit_system)
     cards.append(_card(
         "Temperature",
-        _disp(temp),
-        "",
+        tv["value"],
+        tv["unit"],
         "Open-Meteo (baseline: ERA5)",
         "Temperature controls key thresholds for flight and colony development.",
         "Temperature directly affects the flight window; colder tendencies suppress the score.",
         extra=[temp.get("desc")] if temp.get("desc") and temp.get("desc") != "--" else []
     ))
-
     # Backward-compat: keep `kpis` as the headline grid (now full 14 items)
     kpis = cards
 
@@ -3599,6 +3721,9 @@ def report_by_id(rid: str):
     if not payload:
         return "Report not found or expired.", 404
     payload["report_id"] = rid
+    # Units: prefer explicit query param, then stored payload, default metric.
+    unit_system = _units_normalize(request.args.get('units') or payload.get('unit_system') or (payload.get('details') or {}).get('unit_system') or 'metric')
+    payload['_unit_system'] = unit_system
     # New product rule: no preview report. Report access is paid-only.
     if not _is_paid(rid):
         return redirect(url_for("buy_report", rid=rid))
@@ -3616,6 +3741,9 @@ def report_pdf(rid: str):
     if not payload:
         return "Report not found or expired.", 404
     payload["report_id"] = rid
+    # Units: prefer explicit query param, then stored payload, default metric.
+    unit_system = _units_normalize(request.args.get('units') or payload.get('unit_system') or (payload.get('details') or {}).get('unit_system') or 'metric')
+    payload['_unit_system'] = unit_system
     if not _is_paid(rid):
         # Not paid: send user to purchase flow (or BYPASS test checkout in dev).
         return redirect(url_for("buy_report", rid=rid))
@@ -3667,6 +3795,7 @@ def analyze():
         # MVP decision: English-only UI/text for now.
         # (i18n keys exist; we'll re-enable language switching in FAZ-4.)
         lang = 'en'
+        unit_system = _units_normalize(d.get('units') or request.headers.get('X-Units') or request.args.get('units') or 'metric')
 
         lat = d.get("lat")
         lon = d.get("lon") or d.get("lng")
@@ -3804,10 +3933,12 @@ def analyze():
 
         resp = {
             "score": score,
+            "unit_system": unit_system,
             "lat": lat,
             "lon": lon,
             "lng": lon,
             "details": {
+                "unit_system": unit_system,
                 "season_meta": season_meta or {},
                 "flora": ensure_schema(flora),
                 "water": ensure_schema(water),

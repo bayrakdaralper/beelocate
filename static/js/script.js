@@ -11,6 +11,91 @@ let roiCircle = null;
 let selectedLat = null;
 let selectedLng = null;
 let currentLang = 'EN';
+let currentUnits = (function(){
+  try { return (localStorage.getItem('blp_units') || 'metric'); } catch(e) { return 'metric'; }
+})();
+
+function _normUnits(u){
+  u = String(u||'').toLowerCase();
+  return (u === 'imperial' || u === 'us' || u === 'uscs' || u === 'english') ? 'imperial' : 'metric';
+}
+
+function updateUnitsUI(){
+  currentUnits = _normUnits(currentUnits);
+  const el = document.getElementById('units-label');
+  const btn = document.getElementById('units-btn');
+  if(el) el.textContent = (currentUnits === 'imperial') ? 'Imperial' : 'Metric';
+  if(btn) btn.setAttribute('aria-pressed', currentUnits === 'imperial' ? 'true' : 'false');
+}
+
+function toggleUnits(){
+  currentUnits = (currentUnits === 'imperial') ? 'metric' : 'imperial';
+  try { localStorage.setItem('blp_units', currentUnits); } catch(e) {}
+  updateUnitsUI();
+  if (window.lastResult) { renderResults(window.lastResult); }
+}
+
+function _numFromAny(x){
+  if (x === null || x === undefined) return null;
+  if (typeof x === 'number') return isFinite(x) ? x : null;
+  const m = String(x).match(/-?\d+(?:\.\d+)?/);
+  if(!m) return null;
+  const v = parseFloat(m[0]);
+  return isFinite(v) ? v : null;
+}
+function _fmt(v, nd){
+  if(v===null || v===undefined || !isFinite(v)) return '--';
+  const p = Math.max(0, Math.min(3, nd||0));
+  return Number(v).toFixed(p);
+}
+function _kmToMi(km){ return km * 0.621371; }
+function _mToFt(m){ return m * 3.28084; }
+function _mmToIn(mm){ return mm / 25.4; }
+function _cToF(c){ return (c * 9/5) + 32; }
+function _kmhToMph(kmh){ return kmh * 0.621371; }
+
+function formatMetricForUnits(title, metric){
+  const t = String(title||'').toLowerCase();
+  const m = (metric && typeof metric === 'object') ? metric : {};
+  // Defaults from backend
+  let main = (m._main ?? m.label ?? m.val ?? '--');
+  let sub  = (m._sub ?? m.desc ?? '--');
+  const us = _normUnits(currentUnits);
+
+  // Distance-like cards (backend val is usually in km, elevation in m, precip in mm)
+  if (us === 'imperial') {
+    if (t.includes('road distance') || t.includes('settlement distance')) {
+      const km = _numFromAny(m.val ?? m.value ?? m.label);
+      if (km !== null) main = `${_fmt(_kmToMi(km), 1)} mi`;
+    }
+    if (t === 'elevation') {
+      const meters = _numFromAny(m.val ?? m.value ?? m.label);
+      if (meters !== null) main = `${_fmt(_mToFt(meters), 0)} ft`;
+    }
+    if (t.includes('precip')) {
+      const mm = _numFromAny(m.val ?? m.value ?? m.label);
+      if (mm !== null) main = `${_fmt(_mmToIn(mm), 2)} in`;
+    }
+    if (t.includes('temperature')) {
+      const c = _numFromAny(m.val ?? m.value ?? m.label);
+      if (c !== null) main = `${_fmt(_cToF(c), 0)} °F`;
+    }
+    if (t.includes('wind')) {
+      // Many backends send km/h in label/val; convert to mph if numeric present.
+      const kmh = _numFromAny(m.val ?? m.value ?? m.label);
+      if (kmh !== null) main = `${_fmt(_kmhToMph(kmh), 0)} mph`;
+    }
+  } else {
+    // metric: try to standardize display if backend sent bare numbers
+    if ((t.includes('road distance') || t.includes('settlement distance')) && typeof main === 'number') main = `${_fmt(main,1)} km`;
+    if (t === 'elevation' && typeof main === 'number') main = `${_fmt(main,0)} m`;
+    if (t.includes('precip') && typeof main === 'number') main = `${_fmt(main,0)} mm`;
+    if (t.includes('temperature') && typeof main === 'number') main = `${_fmt(main,0)} °C`;
+    if (t.includes('wind') && typeof main === 'number') main = `${_fmt(main,0)} km/h`;
+  }
+  return { main, sub };
+}
+
 let lastResult = null;
 let waterManaged = false;
 let baseLayer = null;
@@ -172,10 +257,10 @@ function setText(id, value) {
 
 function scoreComment(score) {
   if (!Number.isFinite(score)) return '--';
-  if (score >= 80) return currentLang === 'TR' ? 'Yüksek Potansiyel' : 'High Potential';
-  if (score >= 60) return currentLang === 'TR' ? 'İyi Potansiyel' : 'Good Potential';
-  if (score >= 40) return currentLang === 'TR' ? 'Orta Potansiyel' : 'Medium Potential';
-  return currentLang === 'TR' ? 'Düşük Potansiyel' : 'Low Potential';
+  if (score >= 80) return 'High Potential';
+  if (score >= 60) return 'Good Potential';
+  if (score >= 40) return 'Medium Potential';
+  return 'Low Potential';
 }
 function formatCoords(lat, lon) {
   const a = Number(lat), b = Number(lon);
@@ -191,12 +276,12 @@ function updateSeasonOptionLabel(seasonLabelTR) {
 
   const raw = (seasonLabelTR || '').trim();
   if (!raw) {
-    opt.textContent = '🌿 ÖNERİLEN SEZON (Fenoloji)';
+    opt.textContent = '🌿 RECOMMENDED SEASON (Phenology)';
     return;
   }
   // keep it short in the dropdown
   const short = raw.split(' (')[0]; // e.g., "Nisan–Haziran"
-  opt.textContent = `🌿 ÖNERİLEN SEZON (${short})`;
+  opt.textContent = `🌿 RECOMMENDED SEASON (${short})`;
 }
 
 
@@ -211,7 +296,7 @@ function waitForLeafletAndInit(retries = 80) { // ~8s
   }
   if (retries <= 0) {
     console.error('Leaflet failed to load.');
-    alert(currentLang === 'EN' ? 'Map engine failed to load. Please refresh.' : 'Harita motoru yüklenemedi. Sayfayı yenileyin.');
+    alert('Map engine failed to load. Please refresh.');
     return;
   }
   setTimeout(() => waitForLeafletAndInit(retries - 1), 100);
@@ -352,9 +437,7 @@ function setLang(lang) {
   // Refresh managed-water button label
   const lbl = $('water-managed-label');
   if (lbl) {
-    lbl.textContent = waterManaged
-      ? (currentLang==='EN' ? 'Managed Water: ON' : 'Yapay Su Desteği: AÇIK')
-      : (currentLang==='EN' ? 'Managed Water: OFF' : 'Yapay Su Desteği');
+    lbl.textContent = waterManaged ? 'Managed Water: ON' : 'Managed Water: OFF';
   }
 }
 
@@ -367,16 +450,16 @@ async function handleSearch(event) {
 
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
-    const res = await fetch(url, { headers: { 'Accept-Language': currentLang === 'EN' ? 'en' : 'tr' } });
+    const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
     const arr = await res.json();
     if (!Array.isArray(arr) || arr.length === 0) {
-      alert(currentLang === 'EN' ? 'No results found.' : 'Sonuç bulunamadı.');
+      alert('No results found.');
       return;
     }
     const lat = Number(arr[0].lat);
     const lon = Number(arr[0].lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      alert(currentLang === 'EN' ? 'Invalid result.' : 'Geçersiz sonuç.');
+      alert('Invalid result.');
       return;
     }
 
@@ -400,7 +483,7 @@ async function handleSearch(event) {
     }
   } catch (e) {
     console.error(e);
-    alert(currentLang === 'EN' ? 'Search error.' : 'Arama hatası.');
+    alert('Search error.');
   }
 }
 
@@ -418,8 +501,7 @@ function toggleWaterManaged() {
     btn.classList.toggle('ring-yellow-400/50', waterManaged);
   }
   const lbl = $('water-managed-label');
-  if (lbl) lbl.textContent = waterManaged ? (currentLang==='EN' ? 'Managed Water: ON' : 'Yapay Su Desteği: AÇIK')
-                                          : (currentLang==='EN' ? 'Managed Water: OFF' : 'Yapay Su Desteği');
+  if (lbl) lbl.textContent = waterManaged ? 'Managed Water: ON' : 'Managed Water: OFF';
   // If we already have a point selected, re-run analysis instantly
   if (selectedLat && selectedLng) startAnalysis();
 }
@@ -498,7 +580,7 @@ async function startAnalysis() {
     return;
   }
   if (!Number.isFinite(selectedLat) || !Number.isFinite(selectedLng)) {
-    alert(currentLang === 'EN' ? 'Please select a location.' : 'Lütfen haritadan bir konum seçin.');
+    alert('Please select a location.');
     return;
   }
 
@@ -513,7 +595,7 @@ async function startAnalysis() {
   setText('score-val', '0');
   setText('score-comment', '--');
   setText('main-coords', '--');
-  setText('dynamic-text', currentLang === 'EN' ? 'Analyzing...' : 'Analiz yapılıyor...');
+  setText('dynamic-text', 'Analyzing...');
 
   try {
     // immediate feedback (fixes 1-3s "nothing happens" feeling)
@@ -526,7 +608,8 @@ async function startAnalysis() {
       month: month,
       rad: rad,
       water_managed: managed,
-      uid: getOrCreateUid()
+      uid: getOrCreateUid(),
+      units: currentUnits
     };
 
     const res = await fetch('/analyze', {
@@ -553,7 +636,7 @@ async function startAnalysis() {
 
   } catch (e) {
     console.error(e);
-    alert(currentLang === 'EN' ? 'Analysis error. Check console.' : 'Analiz hatası. Konsolu kontrol et.');
+    alert('Analysis error. Check console.');
   } finally {
     hideLoadingScreen();
   }
@@ -574,8 +657,8 @@ function renderResults(data) {
   setText('main-coords', coords);
 
   // Update season label in dropdown (so user sees the actual recommended window)
-  const seasonLabelTR = d?.season_meta?.season_label_tr;
-  updateSeasonOptionLabel(seasonLabelTR);
+  const seasonLabel = d?.season_meta?.season_label_en || d?.season_meta?.season_label_tr;
+  updateSeasonOptionLabel(seasonLabel);
 
 
   // System message
@@ -589,22 +672,20 @@ function renderResults(data) {
   const topo = d.topography || {};
 
   const cards = [
-    { title: currentLang==='EN' ? 'Vegetation' : 'Vejetasyon', icon: 'forest', border: 'border-green-500', metric: d.flora },
-    { title: currentLang==='EN' ? 'Water' : 'Su Kaynağı', icon: 'water_drop', border: 'border-blue-500', metric: d.water },
-    { title: currentLang==='EN' ? 'Wind' : 'Rüzgar', icon: 'air', border: 'border-sky-500', metric: d.climate?.wind },
-    { title: currentLang==='EN' ? 'Flight Window' : 'Uçuş Penceresi', icon: 'event_available', border: 'border-emerald-500', metric: d.flight },
-    { title: currentLang==='EN' ? 'Aspect' : 'Bakı / Yön', icon: 'explore', border: 'border-yellow-500', metric: topo.aspect || d.aspect },
-    { title: currentLang==='EN' ? 'Humidity' : 'Nem', icon: 'water', border: 'border-purple-500', metric: d.climate?.humidity },
-    { title: currentLang==='EN' ? 'Slope' : 'Eğim', icon: 'landscape', border: 'border-gray-400', metric: topo.slope || d.slope },
-    { title: currentLang==='EN' ? 'Road Distance' : 'Yol Uzaklığı', icon: 'route', border: 'border-red-500', metric: d.transport },
-    { title: currentLang==='EN' ? 'Urban' : 'Şehirleşme', icon: 'location_city', border: 'border-orange-500', metric: d.urban },
-    { title: currentLang==='EN' ? 'Settlement' : 'Yerleşim', icon: 'home_work', border: 'border-amber-500', metric: d.settlement },
-    // Flight suitability is a different concept than raw flight window
-    { title: currentLang==='EN' ? 'Flight Suitability' : 'Uçuş Uygunluğu', icon: 'fact_check', border: 'border-emerald-400', metric: d.flight_suitability },
-    { title: currentLang==='EN' ? 'Precip' : 'Yağış', icon: 'rainy', border: 'border-cyan-500', metric: d.precip },
-    // (removed duplicated flight cards)
-    { title: currentLang==='EN' ? 'Elevation' : 'Rakım', icon: 'terrain', border: 'border-indigo-500', metric: topo.elevation || d.elevation },
-    { title: currentLang==='EN' ? 'Temperature' : 'Sıcaklık', icon: 'thermostat', border: 'border-pink-500', metric: d.climate?.temp },
+    { title: 'Vegetation', icon: 'forest', border: 'border-green-500', metric: d.flora },
+    { title: 'Water', icon: 'water_drop', border: 'border-blue-500', metric: d.water },
+    { title: 'Wind', icon: 'air', border: 'border-sky-500', metric: d.climate?.wind },
+    { title: 'Flight Window', icon: 'event_available', border: 'border-emerald-500', metric: d.flight },
+    { title: 'Aspect', icon: 'explore', border: 'border-yellow-500', metric: topo.aspect || d.aspect },
+    { title: 'Humidity', icon: 'water', border: 'border-purple-500', metric: d.climate?.humidity },
+    { title: 'Slope', icon: 'landscape', border: 'border-gray-400', metric: topo.slope || d.slope },
+    { title: 'Road Distance', icon: 'route', border: 'border-red-500', metric: d.transport },
+    { title: 'Urban', icon: 'location_city', border: 'border-orange-500', metric: d.urban },
+    { title: 'Settlement', icon: 'home_work', border: 'border-amber-500', metric: d.settlement },
+    { title: 'Flight Suitability', icon: 'fact_check', border: 'border-emerald-400', metric: d.flight_suitability },
+    { title: 'Precip', icon: 'rainy', border: 'border-cyan-500', metric: d.precip },
+    { title: 'Elevation', icon: 'terrain', border: 'border-indigo-500', metric: topo.elevation || d.elevation },
+    { title: 'Temperature', icon: 'thermostat', border: 'border-pink-500', metric: d.climate?.temp },
   ];
 
   for (const c of cards) {
@@ -619,25 +700,32 @@ function createCard(title, metric, icon, border) {
 
   // Ensure Flight Suitability is not a duplicate of Flight Window
   const t = (title || '').toLowerCase();
-  if (t.includes('uçuş uygunluğu') || t.includes('flight suitability')) {
+  if (t.includes('flight suitability')) {
     // If backend accidentally sends a raw day count, derive class+score here.
     const daysRaw = (m.value ?? m.val ?? null);
     const days = Number(daysRaw);
-    const looksLikeDays = (typeof main === 'string' && main.includes('gün')) || Number.isFinite(days);
+    const looksLikeDays = Number.isFinite(days) || (typeof main === 'string' && /day|year|yr/i.test(main));
     if (looksLikeDays) {
       const d = Number.isFinite(days) ? days : Number(String(main).replace(/[^0-9.]/g,''));
       let cls = '--', sc = 0;
       if (Number.isFinite(d)) {
-        if (d < 120) { cls='Zayıf'; sc=20; }
-        else if (d < 180) { cls='Orta'; sc=45; }
-        else if (d < 240) { cls='İyi'; sc=70; }
-        else if (d < 300) { cls='Çok İyi'; sc=85; }
-        else { cls='Mükemmel'; sc=95; }
+        if (d < 120) { cls='Weak'; sc=20; }
+        else if (d < 180) { cls='Fair'; sc=45; }
+        else if (d < 240) { cls='Good'; sc=70; }
+        else if (d < 300) { cls='Very Good'; sc=85; }
+        else { cls='Excellent'; sc=95; }
         main = `${cls} (${sc}/100)`;
-        sub = `Uçuş penceresi: ${Math.round(d)} gün/yıl`;
+        sub = `Estimated flight-ready days: ${Math.round(d)} days/year`;
       }
     }
   }
+
+  // Apply unit conversion for display (Metric/Imperial toggle).
+  try {
+    const fm = formatMetricForUnits(title, m);
+    if (fm && fm.main !== undefined) main = fm.main;
+    if (fm && fm.sub !== undefined) sub = fm.sub;
+  } catch (e) {}
 
   const card = document.createElement('div');
   card.className = `p-3 rounded-lg border ${border} bg-white/5`;
@@ -655,36 +743,35 @@ function createCard(title, metric, icon, border) {
 // Safe stubs
 function downloadReport() {
   if (!lastResult) {
-    alert(currentLang === 'EN' ? 'Run an analysis first.' : 'Önce analiz yap.');
+    alert('Run an analysis first.');
     return;
   }
 
   // Prefer id-based report URL (enables PDF export + caching).
   const rid = lastResult.report_id;
   if (rid) {
-    window.open(`/report/${rid}`, '_blank');
+    window.open(`/report/${rid}?units=${encodeURIComponent(currentUnits)}`, '_blank');
     return;
   }
 
   // Single source of truth: report_id must be present.
-  alert(currentLang === 'EN'
-    ? 'Report id is missing. Please run the analysis again.'
-    : 'Rapor kimliği bulunamadı. Lütfen analizi yeniden çalıştırın.');
+  alert('Report ID is missing. Please run the analysis again.');
 }
 
 async function shareResult() {
   if (!lastResult) return;
-  const txt = `BeeLocate PRO skor: ${lastResult.score} | Konum: ${lastResult.lat}, ${lastResult.lng}`;
+  const txt = `BeeLocate Pro score: ${lastResult.score} | Location: ${lastResult.lat}, ${lastResult.lng}`;
   try {
     if (navigator.share) { await navigator.share({ title: 'BeeLocate PRO', text: txt }); return; }
   } catch (e) {}
-  try { await navigator.clipboard.writeText(txt); alert(currentLang==='EN' ? 'Copied.' : 'Kopyalandı.'); }
+  try { await navigator.clipboard.writeText(txt); alert('Copied.'); }
   catch (e) { alert(txt); }
 }
 
 // Export required functions for inline handlers
 window.updateRadius = updateRadius;
 window.setLang = setLang;
+window.toggleUnits = toggleUnits;
 window.handleSearch = handleSearch;
 window.startAnalysis = startAnalysis;
 window.updateMonth = updateMonth;
@@ -722,4 +809,4 @@ function updateUnlimitedBadge(){
   }
 }
 setInterval(updateUnlimitedBadge, 1000);
-document.addEventListener('DOMContentLoaded', updateUnlimitedBadge);
+document.addEventListener('DOMContentLoaded', () => { updateUnlimitedBadge(); updateUnitsUI(); });
