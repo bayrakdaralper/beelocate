@@ -59,6 +59,14 @@
                     <button onclick="setLang('EN')" id="btn-en"
                         class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
                 </div>
+
+                <div id="units-toggle"
+                    class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-9 items-center">
+                    <button onclick="setUnits('METRIC')" id="btn-metric"
+                        class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">Metric</button>
+                    <button onclick="setUnits('IMPERIAL')" id="btn-imperial"
+                        class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">Imperial</button>
+                </div>
                 <div class="bg-black/60 backdrop-blur-md rounded-full px-2 py-1 border border-white/10 flex shadow-lg h-9 items-center">
                     <span class="material-symbols-outlined text-white/70 mr-1" style="font-size:18px;">layers</span>
                     <select id="basemap-selector" onchange="setBasemap(this.value)"

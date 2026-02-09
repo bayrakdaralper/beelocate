@@ -11,6 +11,7 @@ let roiCircle = null;
 let selectedLat = null;
 let selectedLng = null;
 let currentLang = 'EN';
+let currentUnits = 'METRIC';
 
 // ------------------------------
 // Minimal static i18n (UI-only)
@@ -130,6 +131,21 @@ function _getSavedLang() {
 
 function _saveLang(v) {
   try { localStorage.setItem('blp_lang', v); } catch (e) {}
+}
+
+function _getSavedUnits() {
+  try {
+    const v = localStorage.getItem('blp_units');
+    if (!v) return null;
+    const up = String(v).toUpperCase();
+    return (up === 'METRIC' || up === 'IMPERIAL') ? up : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function _saveUnits(v) {
+  try { localStorage.setItem('blp_units', v); } catch (e) {}
 }
 let lastResult = null;
 let waterManaged = false;
@@ -438,6 +454,7 @@ async function checkGeeHealth() {
 document.addEventListener('DOMContentLoaded', () => {
   // Restore preferred UI language (TR/EN). Only presentation uses this.
   setLang(_getSavedLang() || 'EN');
+  setUnits(_getSavedUnits() || 'METRIC');
   waitForLeafletAndInit();
 });
 
@@ -481,6 +498,32 @@ function setLang(lang) {
 
   // Apply static UI translations
   applyStaticI18n();
+}
+
+// Units toggle (presentation-only). Core computations remain metric.
+function setUnits(units) {
+  const up = String(units || 'METRIC').toUpperCase();
+  currentUnits = (up === 'IMPERIAL') ? 'IMPERIAL' : 'METRIC';
+  _saveUnits(currentUnits);
+
+  const btnM = $('btn-metric');
+  const btnI = $('btn-imperial');
+  if (btnM && btnI) {
+    if (currentUnits === 'IMPERIAL') {
+      btnI.classList.add('bg-primary', 'text-black');
+      btnI.classList.remove('text-gray-400');
+      btnM.classList.remove('bg-primary', 'text-black');
+      btnM.classList.add('text-gray-400');
+    } else {
+      btnM.classList.add('bg-primary', 'text-black');
+      btnM.classList.remove('text-gray-400');
+      btnI.classList.remove('bg-primary', 'text-black');
+      btnI.classList.add('text-gray-400');
+    }
+  }
+
+  // If a result is already visible, re-render to reflect unit conversion.
+  try { if (lastResult) renderResults(lastResult); } catch (e) {}
 }
 
 async function handleSearch(event) {
@@ -652,6 +695,7 @@ async function startAnalysis() {
       rad: rad,
       water_managed: managed,
       lang: (currentLang === 'EN' ? 'en' : 'tr'),
+      units: (currentUnits === 'IMPERIAL' ? 'imperial' : 'metric'),
       uid: getOrCreateUid()
     };
 
@@ -758,13 +802,94 @@ function createCard(title, metric, icon, border) {
       const d = Number.isFinite(days) ? days : Number(String(main).replace(/[^0-9.]/g,''));
       let cls = '--', sc = 0;
       if (Number.isFinite(d)) {
-        if (d < 120) { cls='Zayıf'; sc=20; }
-        else if (d < 180) { cls='Orta'; sc=45; }
-        else if (d < 240) { cls='İyi'; sc=70; }
-        else if (d < 300) { cls='Çok İyi'; sc=85; }
-        else { cls='Mükemmel'; sc=95; }
+        const EN = (currentLang === 'EN');
+        if (d < 120) { cls = EN ? 'Poor' : 'Zayıf'; sc=20; }
+        else if (d < 180) { cls = EN ? 'Moderate' : 'Orta'; sc=45; }
+        else if (d < 240) { cls = EN ? 'Good' : 'İyi'; sc=70; }
+        else if (d < 300) { cls = EN ? 'Very Good' : 'Çok İyi'; sc=85; }
+        else { cls = EN ? 'Excellent' : 'Mükemmel'; sc=95; }
         main = `${cls} (${sc}/100)`;
-        sub = `Uçuş penceresi: ${Math.round(d)} gün/yıl`;
+        sub = EN ? `Flight window: ${Math.round(d)} days/year` : `Uçuş penceresi: ${Math.round(d)} gün/yıl`;
+      }
+    }
+
+    // Even if backend sends Turkish labels, enforce English in EN mode (presentation-only).
+    if (currentLang === 'EN') {
+      if (typeof main === 'string') {
+        main = main
+          .replace(/Mükemmel/g, 'Excellent')
+          .replace(/Çok İyi/g, 'Very Good')
+          .replace(/İyi/g, 'Good')
+          .replace(/Orta/g, 'Moderate')
+          .replace(/Zayıf/g, 'Poor');
+      }
+      if (typeof sub === 'string') {
+        sub = sub
+          .replace(/Uçuş penceresi/g, 'Flight window')
+          .replace(/Uçuş uygun gün(ler)?/g, 'Suitable flight days')
+          .replace(/gün\/yıl/g, 'days/year')
+          .replace(/Ort\.?/g, 'Avg');
+      }
+    }
+  }
+
+  // Unit conversion (presentation-only). Core values remain metric.
+  if (currentUnits === 'IMPERIAL') {
+    const tt = (title || '').toLowerCase();
+    const toNum = (s) => {
+      const m = String(s).match(/-?\d+(?:\.\d+)?/);
+      return m ? Number(m[0]) : NaN;
+    };
+    const replNum = (s, newNum) => String(s).replace(/-?\d+(?:\.\d+)?/, newNum);
+    const fmt1 = (x) => (Math.round(x*10)/10).toFixed(1);
+
+    // Wind: km/h -> mph
+    if (tt.includes('wind') || tt.includes('rüzgar')) {
+      const v = toNum(main);
+      if (Number.isFinite(v)) {
+        const mph = v * 0.621371;
+        main = replNum(main, fmt1(mph)).replace('km/h', 'mph');
+      }
+    }
+
+    // Distances: km -> mi
+    if (tt.includes('road distance') || tt.includes('yol') || tt.includes('settlement') || tt.includes('yerleşim')) {
+      const v = toNum(main);
+      if (Number.isFinite(v) && String(main).includes('km')) {
+        const mi = v * 0.621371;
+        main = replNum(main, fmt1(mi)).replace('km', 'mi');
+      }
+      const v2 = toNum(sub);
+      if (Number.isFinite(v2) && String(sub).includes('km')) {
+        const mi2 = v2 * 0.621371;
+        sub = replNum(sub, fmt1(mi2)).replace('km', 'mi');
+      }
+    }
+
+    // Elevation: m -> ft
+    if (tt.includes('elevation') || tt.includes('rakım')) {
+      const v = toNum(main);
+      if (Number.isFinite(v) && /m\b/.test(String(main))) {
+        const ft = v * 3.28084;
+        main = replNum(main, String(Math.round(ft))).replace(/m\b/, 'ft');
+      }
+    }
+
+    // Temperature: C -> F
+    if (tt.includes('temperature') || tt.includes('sıcaklık')) {
+      const v = toNum(main);
+      if (Number.isFinite(v) && String(main).includes('°C')) {
+        const f = (v * 9/5) + 32;
+        main = replNum(main, fmt1(f)).replace('°C', '°F');
+      }
+    }
+
+    // Precip: mm -> in
+    if (tt.includes('precip') || tt.includes('yağış')) {
+      const v = toNum(main);
+      if (Number.isFinite(v) && String(main).includes('mm')) {
+        const inch = v / 25.4;
+        main = replNum(main, fmt1(inch)).replace('mm', 'in');
       }
     }
   }
