@@ -6,6 +6,7 @@ import os
 
 import ee
 import requests
+import presentation as pres
 from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for
 
 
@@ -1814,37 +1815,51 @@ def get_sentinel_collection_safe(roi, start_date, end_date):
 # ----------------------------
 # 1) Water (hybrid)
 # ----------------------------
-def get_water_hybrid(roi, lang="tr"):
+def _water_core(roi):
+    """Core water detection. Language-agnostic."""
+    jrc_val = None
     try:
-        # A) JRC Global Surface Water (occurrence)
         jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
         jrc_val = jrc.reduceRegion(ee.Reducer.max(), roi, 30).get("occurrence").getInfo()
+        if jrc_val is not None:
+            jrc_val = float(jrc_val)
+    except Exception:
+        jrc_val = None
 
-        # B) Sentinel-2 NDWI max
+    ndwi_max = 0.0
+    try:
         s2_img = get_sentinel_collection_safe(roi, datetime.now() - timedelta(days=60), datetime.now())
-
-        ndwi_max = 0.0
         if s2_img:
-            ndwi = s2_img.normalizedDifference(["B3", "B8"])  # Green - NIR
+            ndwi = s2_img.normalizedDifference(["B3", "B8"])
             ndwi_val = ndwi.reduceRegion(ee.Reducer.max(), roi, 20).get("nd").getInfo()
             if ndwi_val is not None:
                 ndwi_max = float(ndwi_val)
+    except Exception:
+        ndwi_max = 0.0
 
-        if (jrc_val is not None and float(jrc_val) > 50) or (ndwi_max > 0.1):
-            src = "Kalıcı Su (JRC Global Water)" if (jrc_val is not None and float(jrc_val) > 50) else "Canlı Tespit (Uydu NDWI)"
-            is_en = str(lang).lower().startswith("en")
-            return {"val": 100, "score": 100, "label": ("Water Available" if is_en else "Su Kaynağı Var"), "desc": src, "status": "Aktif"}
+    has_jrc = (jrc_val is not None and jrc_val > 50)
+    has_ndwi = (ndwi_max > 0.1)
 
-        is_en = str(lang).lower().startswith("en")
-        return {"val": 0, "score": 0, "label": ("No Water Detected" if is_en else "Su Yok"), "desc": ("No surface water detected nearby" if is_en else "Yakınlarda su tespit edilemedi"), "status": "Aktif"}
+    if has_jrc:
+        return {"has_water": True, "source": "jrc", "jrc_occurrence_max": jrc_val, "ndwi_max": ndwi_max}
+    if has_ndwi:
+        return {"has_water": True, "source": "ndwi", "jrc_occurrence_max": jrc_val, "ndwi_max": ndwi_max}
+    return {"has_water": False, "source": "none", "jrc_occurrence_max": jrc_val, "ndwi_max": ndwi_max}
 
+
+def get_water_hybrid(roi, lang="tr"):
+    """Presentation wrapper (keeps old signature stable)."""
+    try:
+        core = _water_core(roi)
+        return pres.present_water(core, lang=lang)
     except Exception as e:
         print(f"Water Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "Analysis error", "status": "Pasif"}
 
 
 # ----------------------------
 # 2) Climate (Open-Meteo live)
+# ----------------------------
 # ----------------------------
 def get_climate_smart(lat, lon):
     try:
@@ -1927,38 +1942,39 @@ def _worldcover_distribution(roi):
         return {}
 
 
-def get_flora(roi, month_arg, season_meta=None, lang="tr"):
+def _flora_core(roi, month_arg, season_meta=None):
+    """Core flora/forage signal from NDVI + landcover. Language-agnostic."""
     try:
-        # --- Resolve analysis window ---
-        # month_arg can be:
-        #   - "current"  -> last 30 days
-        #   - 1..12       -> simulated month window
-        #   - "season"   -> recommended season based on phenology (peak month)
+        peak_m = None
+        sos_m = None
+
         if month_arg == "season":
-            # Compute phenology if not provided
             if not isinstance(season_meta, dict):
                 season_meta = get_ndvi_phenology(roi)
             peak_m = season_meta.get("peak_month") if season_meta else None
+            sos_m = season_meta.get("sos_month") if season_meta else None
             if peak_m is None:
-                # Fallback to April (reasonable TR default) if phenology unavailable
                 peak_m = 4
             start_date, end_date, date_info = resolve_date_window(int(peak_m))
-
-            sos_m = season_meta.get("sos_month") if season_meta else None
-            months = MONTH_NAMES_EN if str(lang).lower().startswith("en") else MONTH_NAMES_TR
-            peak_name = months.get(int(peak_m), str(peak_m))
-            sos_name = months.get(int(sos_m), str(sos_m)) if sos_m else "--"
-            date_info = (f"Recommended window | SOS: {sos_name} | Peak: {peak_name}" if str(lang).lower().startswith("en")
-                         else f"Önerilen Sezon | SOS: {sos_name} | Peak: {peak_name}")
+            window_type = "season"
         else:
             start_date, end_date, date_info = resolve_date_window(month_arg)
+            window_type = "month"
 
         s2_img = get_sentinel_collection_safe(roi, start_date, end_date)
         if not s2_img:
-            return {"val": 0, "score": None,
-                    "label": ("No Data" if str(lang).lower().startswith("en") else "Veri Yok"),
-                    "desc": ("No Sentinel-2 image found" if str(lang).lower().startswith("en") else "Sentinel-2 Görüntüsü Bulunamadı"),
-                    "status": "Pasif"}
+            return {
+                "status": "Pasif",
+                "reason": "no_sentinel",
+                "ndvi": None,
+                "score": None,
+                "class_code": None,
+                "date_info": date_info,
+                "window_type": window_type,
+                "peak_month": peak_m,
+                "sos_month": sos_m,
+                "landcover_top": [],
+            }
 
         ndvi = s2_img.normalizedDifference(["B8", "B4"])
         val = ndvi.reduceRegion(ee.Reducer.mean(), roi, 20).get("nd").getInfo()
@@ -1968,38 +1984,63 @@ def get_flora(roi, month_arg, season_meta=None, lang="tr"):
 
         final_score = clamp(int(val * 120), 0, 100)
 
-        is_en = str(lang).lower().startswith("en")
         if val > 0.65:
-            label = "Very Dense Vegetation" if is_en else "Çok Yoğun Bitki Örtüsü"
+            class_code = "very_dense"
         elif val > 0.45:
-            label = "Dense Vegetation" if is_en else "Yoğun Bitki"
+            class_code = "dense"
         elif val > 0.25:
-            label = "Moderate / Sparse Vegetation" if is_en else "Orta-Seyrek Bitki"
+            class_code = "moderate"
         elif val > 0.10:
-            label = "Sparse / Mixed" if is_en else "Seyrek Bitki / Karışık"
+            class_code = "sparse"
         else:
-            label = "Bare / Built-up" if is_en else "Çıplak Zemin / Yapılaşma"
+            class_code = "bare"
 
-        # --- Landcover distribution (fixes the "Tip: Su Kütlesi" false label) ---
-        dist = _worldcover_distribution(roi)
-        if dist:
-            top = list(dist.items())[:3]
-            lc_str = " | ".join([f"{k}: %{v}" for k, v in top])
-            land_desc = (f"Land cover: {lc_str}" if is_en else f"Arazi Örtüsü: {lc_str}")
-        else:
-            land_desc = "Land cover: Not detected" if is_en else "Arazi Örtüsü: Tespit Edilemedi"
+        dist = _worldcover_distribution(roi) or {}
+        top = list(dist.items())[:3]
+        landcover_top = [{"name": k, "pct": v} for k, v in top]
 
-        desc = (f"NDVI: {round(val, 2)} (Sentinel-2) | {land_desc} | Window: {date_info}" if is_en
-                else f"NDVI: {round(val, 2)} (Sentinel-2) | {land_desc} | Dönem: {date_info}")
-        return {"val": final_score, "score": final_score, "label": label, "desc": desc, "status": "Aktif"}
+        return {
+            "status": "Aktif",
+            "reason": None,
+            "ndvi": val,
+            "score": final_score,
+            "class_code": class_code,
+            "date_info": date_info,
+            "window_type": window_type,
+            "peak_month": peak_m,
+            "sos_month": sos_m,
+            "landcover_top": landcover_top,
+        }
 
     except Exception as e:
+        print(f"Flora Core Error: {e}")
+        return {
+            "status": "Pasif",
+            "reason": "exception",
+            "ndvi": None,
+            "score": None,
+            "class_code": None,
+            "date_info": "--",
+            "window_type": "unknown",
+            "peak_month": None,
+            "sos_month": None,
+            "landcover_top": [],
+        }
+
+
+def get_flora(roi, month_arg, season_meta=None, lang="tr"):
+    """Presentation wrapper (keeps old signature stable)."""
+    try:
+        core = _flora_core(roi, month_arg, season_meta=season_meta)
+        return pres.present_flora(core, lang=lang)
+    except Exception as e:
         print(f"Flora Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Sistem Hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "System error", "status": "Pasif"}
 
 
 # ----------------------------
 # 4) Precipitation (CHIRPS)
+# ----------------------------
 # ----------------------------
 def precip_score_from_mm(mm):
     if mm is None:
@@ -3875,6 +3916,38 @@ def analyze():
             }
         )
 
+
+
+
+# ----------------------------
+# API Signature Lock (fail fast)
+# ----------------------------
+def _signature_lock():
+    """Fail fast if someone breaks core function call contracts.
+    This prevents the 'same function called 3 different ways' disaster.
+    """
+    import inspect as _inspect
+
+    expected = {
+        "get_urban": "(roi)",
+        "get_settlement": "(lon, lat)",
+        "get_transport": "(lon, lat)",
+        "get_transport_overpass": "(lon, lat)",
+        "get_water_hybrid": "(roi, lang='tr')",
+        "get_flora": "(roi, month_arg, season_meta=None, lang='tr')",
+    }
+
+    for fn_name, sig_str in expected.items():
+        fn = globals().get(fn_name)
+        if not fn:
+            raise RuntimeError(f"SignatureLock: missing function {fn_name}")
+        got = str(_inspect.signature(fn))
+        # normalize quotes
+        got_norm = got.replace('"', "'")
+        if got_norm != sig_str:
+            raise RuntimeError(f"SignatureLock: {fn_name} expected {sig_str} but got {got}")
+
+_signature_lock()
 
 
 
