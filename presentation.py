@@ -133,3 +133,87 @@ def present_flora(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
         "desc": desc,
         "status": "Aktif",
     }
+def present_precip(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
+    status = core.get("status", "Pasif")
+    src = core.get("source", "CHIRPS")
+    date_info = _date_info(lang, str(core.get("date_info") or "--"))
+
+    if status != "Aktif":
+        reason = core.get("reason")
+        if reason == "no_data":
+            return {
+                "val": 0,
+                "score": None,
+                "label": _t(lang, "Veri Yok", "No Data"),
+                "desc": _t(lang, f"{src} yağış verisi bulunamadı", f"{src} precipitation not available"),
+                "status": "Pasif",
+            }
+        if reason == "no_value":
+            return {
+                "val": 0,
+                "score": None,
+                "label": _t(lang, "Veri Yok", "No Data"),
+                "desc": _t(lang, "Yağış değeri alınamadı", "Could not retrieve precipitation value"),
+                "status": "Pasif",
+            }
+        return {
+            "val": 0,
+            "score": None,
+            "label": "--",
+            "desc": _t(lang, "Analiz Hatası", "Analysis error"),
+            "status": "Pasif",
+        }
+
+    mm = core.get("mm")
+    score = core.get("score")
+    label = "--"
+    try:
+        if mm is not None:
+            label = f"{float(mm):.0f} mm"
+    except Exception:
+        label = "--"
+
+    desc = _t(lang, f"Toplam Yağış ({date_info}) | Kaynak: {src}",
+              f"Total precipitation ({date_info}) | Source: {src}")
+
+    return {"val": mm if mm is not None else 0, "score": score, "label": label, "desc": desc, "status": "Aktif"}
+
+
+def present_climate(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
+    status = core.get("status", "Pasif")
+    src = core.get("source", "Open-Meteo")
+
+    if status != "Aktif":
+        return {"temp": {}, "wind": {}, "humidity": {}, "status": "Pasif"}
+
+    t = core.get("temperature_c")
+    h = core.get("humidity_pct")
+    w = core.get("wind_kmh")
+    d = core.get("wind_dir_deg")
+
+    # Direction text (reuse app's cardinal mapping? Keep simple here.)
+    def _cardinal(deg):
+        try:
+            deg = float(deg)
+        except Exception:
+            return None
+        dirs_tr = ["Kuzey", "Kuzeydoğu", "Doğu", "Güneydoğu", "Güney", "Güneybatı", "Batı", "Kuzeybatı"]
+        dirs_en = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        ix = int((deg + 22.5) // 45) % 8
+        return (dirs_en[ix] if is_en(lang) else dirs_tr[ix])
+
+    wind_dir = _cardinal(d)
+
+    temp_val = f"{t:.1f}°C" if isinstance(t, (int, float)) else "--"
+    hum_val = f"%{int(round(h))}" if isinstance(h, (int, float)) else "--"
+    wind_val = f"{w:.1f} km/h" if isinstance(w, (int, float)) else "--"
+
+    wind_desc = _t(lang, f"Yön: {wind_dir}" if wind_dir else "Yön: --",
+                  f"Dir: {wind_dir}" if wind_dir else "Dir: --")
+
+    return {
+        "temp": {"val": temp_val, "desc": _t(lang, f"(Kaynak: {src})", f"(Source: {src})"), "status": "Aktif"},
+        "wind": {"val": wind_val, "desc": wind_desc, "status": "Aktif"},
+        "humidity": {"val": hum_val, "desc": _t(lang, "Anlık Nem Oranı", "Current humidity"), "status": "Aktif"},
+        "status": "Aktif",
+    }

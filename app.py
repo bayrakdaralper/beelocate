@@ -1861,7 +1861,8 @@ def get_water_hybrid(roi, lang="tr"):
 # 2) Climate (Open-Meteo live)
 # ----------------------------
 # ----------------------------
-def get_climate_smart(lat, lon):
+def _climate_core(lat, lon):
+    """Core climate fetch from Open-Meteo. Language-agnostic."""
     try:
         url = (
             "https://api.open-meteo.com/v1/forecast"
@@ -1873,16 +1874,41 @@ def get_climate_smart(lat, lon):
         r = requests.get(url, headers=headers, timeout=7)
         live = r.json().get("current", {}) if r.status_code == 200 else {}
 
-        wind_dir = deg_to_cardinal(live.get("wind_direction_10m", 0))
+        def _f(x):
+            try:
+                return float(x)
+            except Exception:
+                return None
 
         return {
-            "temp": {"val": f"{live.get('temperature_2m', '--')}°C", "desc": "(Kaynak: Open-Meteo)", "status": "Aktif"},
-            "wind": {"val": f"{live.get('wind_speed_10m', '--')} km/h", "desc": f"Yön: {wind_dir}", "status": "Aktif"},
-            "humidity": {"val": f"%{live.get('relative_humidity_2m', '--')}", "desc": "Anlık Nem Oranı", "status": "Aktif"},
             "status": "Aktif",
+            "temperature_c": _f(live.get("temperature_2m")),
+            "humidity_pct": _f(live.get("relative_humidity_2m")),
+            "wind_kmh": _f(live.get("wind_speed_10m")),
+            "wind_dir_deg": _f(live.get("wind_direction_10m")),
+            "source": "Open-Meteo",
+            "reason": None,
         }
     except Exception as e:
-        print(f"İklim Hatası: {e}")
+        print(f"Climate Error: {e}")
+        return {
+            "status": "Pasif",
+            "temperature_c": None,
+            "humidity_pct": None,
+            "wind_kmh": None,
+            "wind_dir_deg": None,
+            "source": "Open-Meteo",
+            "reason": "exception",
+        }
+
+
+def get_climate_smart(lat, lon, lang="tr"):
+    """Presentation wrapper (keeps original behavior stable)."""
+    try:
+        core = _climate_core(lat, lon)
+        return pres.present_climate(core, lang=lang)
+    except Exception as e:
+        print(f"Climate Present Error: {e}")
         return {"temp": {}, "wind": {}, "humidity": {}, "status": "Pasif"}
 
 
@@ -2057,7 +2083,8 @@ def precip_score_from_mm(mm):
     return 50
 
 
-def get_precipitation(roi, month_arg):
+def _precip_core(roi, month_arg):
+    """Core precipitation (CHIRPS). Language-agnostic."""
     try:
         start_date, end_date, date_info = resolve_date_window(month_arg)
         start_str = start_date.strftime("%Y-%m-%d")
@@ -2065,23 +2092,31 @@ def get_precipitation(roi, month_arg):
 
         chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(start_str, end_str).filterBounds(roi)
         count = chirps.size().getInfo()
-        if not count or count == 0:
-            return {"val": 0, "score": None, "label": "Veri Yok", "desc": "CHIRPS yağış verisi bulunamadı", "status": "Pasif"}
+        if not count or int(count) == 0:
+            return {"status": "Pasif", "reason": "no_data", "mm": None, "score": None, "date_info": date_info, "source": "CHIRPS"}
 
         total = chirps.sum().rename("precip")
         mm = total.reduceRegion(ee.Reducer.mean(), roi, 5500).get("precip").getInfo()
         if mm is None:
-            return {"val": 0, "score": None, "label": "Veri Yok", "desc": "Yağış değeri alınamadı", "status": "Pasif"}
+            return {"status": "Pasif", "reason": "no_value", "mm": None, "score": None, "date_info": date_info, "source": "CHIRPS"}
 
         mm = float(mm)
         score = precip_score_from_mm(mm)
-        label = f"{mm:.0f} mm"
-        desc = f"Toplam Yağış ({date_info}) | Kaynak: CHIRPS"
-        return {"val": mm, "score": score, "label": label, "desc": desc, "status": "Aktif"}
+        return {"status": "Aktif", "reason": None, "mm": mm, "score": score, "date_info": date_info, "source": "CHIRPS"}
 
     except Exception as e:
-        print(f"Precip Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
+        print(f"Precip Core Error: {e}")
+        return {"status": "Pasif", "reason": "exception", "mm": None, "score": None, "date_info": "--", "source": "CHIRPS"}
+
+
+def get_precipitation(roi, month_arg, lang="tr"):
+    """Presentation wrapper."""
+    try:
+        core = _precip_core(roi, month_arg)
+        return pres.present_precip(core, lang=lang)
+    except Exception as e:
+        print(f"Precip Present Error: {e}")
+        return {"val": 0, "score": None, "label": "--", "desc": "Analysis error", "status": "Pasif"}
 
 
 # ----------------------------
