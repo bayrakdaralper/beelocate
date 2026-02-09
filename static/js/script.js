@@ -674,19 +674,24 @@ function _setLastReportId(rid) {
   if (rid) localStorage.setItem('blp_last_report_id', rid);
 }
 
-function _showPaywall() {
-  const rid = _lastReportId();
-  const msg = `Daily limit reached. You've used your ${FREE_DAILY_LIMIT} free analyses today.`;
-  const cta = rid ? `/buy/${rid}` : '/';
-  // Minimal modal fallback: use alert + redirect (keeps MVP stable)
+function _showPaywall(opts = {}) {
+  const rid = (opts.reportId || _lastReportId() || '').trim();
+  const msg = opts.message || `Daily limit reached. You've used your ${FREE_DAILY_LIMIT} free analyses today.`;
+  const uid = (opts.uid || getOrCreateUid() || '').trim();
+  const cta = (opts.buyUrl || (uid ? `/checkout?uid=${encodeURIComponent(uid)}` : '/checkout')).trim();
+
+  // Minimal modal fallback: confirm + redirect.
+  // IMPORTANT: If we don't have a report id, we still redirect to /pricing to let user unlock.
   if (confirm(`${msg}\n\nUnlock full report + unlimited analyses for 24 hours — $9.90`)) {
     window.location.href = cta;
   }
 }
 
 async function startAnalysis() {
-  if (_limitReached()) {
-    _showPaywall();
+  // If client thinks limit reached but we don't have a report id (storage cleared),
+  // let server decide and return the correct buy_url.
+  if (_limitReached() && _lastReportId()) {
+    _showPaywall({ uid: getOrCreateUid() });
     return;
   }
   if (!Number.isFinite(selectedLat) || !Number.isFinite(selectedLng)) {
@@ -742,7 +747,7 @@ async function startAnalysis() {
         const k = `blp_free_count_${_todayKey()}`;
         localStorage.setItem(k, String(FREE_DAILY_LIMIT));
       } catch (e) { /* ignore */ }
-      _showPaywall();
+      _showPaywall({ reportId: (data && data.report_id) || '', buyUrl: (data && data.buy_url) || '', message: (data && data.error) || undefined, uid: getOrCreateUid() });
       return;
     }
 

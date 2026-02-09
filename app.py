@@ -278,6 +278,17 @@ def _db_init():
             );
             """
         )
+        # Last computed report per day (MVP). Helps paywall flow when client storage is cleared.
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS last_reports (
+                k TEXT PRIMARY KEY,
+                day_bucket INTEGER NOT NULL,
+                rid TEXT NOT NULL
+            );
+            """
+        )
+
         # Very small rate-limit table (MVP). Keyed by window bucket.
         con.execute(
             """
@@ -3616,6 +3627,54 @@ def get_demo_payload() -> dict:
     }
 
 
+
+def _last_report_set(ip: str, uid: str, rid: str) -> None:
+    """Persist the last generated report id for this caller/day (MVP).
+
+    Purpose: when a user hits the daily cap and client storage is cleared,
+    we can still send them to the correct /buy/<rid> page.
+    """
+    try:
+        day_bucket = int(time.time()) // 86400
+        keys = []
+        if ip:
+            keys.append(f"ip:{ip}:{day_bucket}")
+        if uid:
+            keys.append(f"uid:{uid}:{day_bucket}")
+        if not keys or not rid:
+            return
+        with _db() as con:
+            for k in keys:
+                con.execute(
+                    "INSERT OR REPLACE INTO last_reports (k, day_bucket, rid) VALUES (?, ?, ?)",
+                    (k, day_bucket, rid),
+                )
+            con.commit()
+    except Exception:
+        return
+
+
+def _last_report_get(ip: str, uid: str) -> str:
+    """Get the last report id for this caller/day (best-effort)."""
+    try:
+        day_bucket = int(time.time()) // 86400
+        keys = []
+        if ip:
+            keys.append(f"ip:{ip}:{day_bucket}")
+        if uid:
+            keys.append(f"uid:{uid}:{day_bucket}")
+        if not keys:
+            return ""
+        with _db() as con:
+            for k in keys:
+                row = con.execute("SELECT rid FROM last_reports WHERE k=?", (k,)).fetchone()
+                if row and row[0]:
+                    return str(row[0])
+    except Exception:
+        pass
+    return ""
+
+
 @app.route("/report-preview")
 def report_preview():
     payload = get_demo_payload()
@@ -3623,6 +3682,28 @@ def report_preview():
     payload["report_id"] = rid
     html = _render_report_html(payload, report_id=rid, pdf_mode=False, is_paid=_is_paid(rid))
     return html
+
+
+
+
+@app.route("/checkout")
+def checkout():
+    """Redirect helper so paywall can always send the user somewhere deterministic.
+
+    It finds the last report for the caller for today (ip/uid) and redirects to /buy/<rid>.
+    If none exists, it redirects to landing with a short message.
+    """
+    try:
+        uid = (request.args.get("uid") or "").strip()
+        fwd = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        ip = fwd or (request.headers.get("X-Real-IP") or "").strip() or (request.remote_addr or "").strip()
+        rid = _last_report_get(ip, uid)
+        if rid:
+            return redirect(url_for("buy_report", rid=rid))
+        # No stored report: user probably cleared storage before generating a report today.
+        return redirect(url_for("index"))
+    except Exception:
+        return redirect(url_for("index"))
 
 
 
@@ -3895,10 +3976,14 @@ def analyze():
         # Daily free quota (prevents 'switch browser to reset')
         ok_q, used_q, cap_q = _free_quota_allow(ip, uid)
         if not ok_q:
+            last_rid = _last_report_get(ip, uid)
+            buy_url = f"/checkout?uid={uid}"
             return jsonify({
                 "ok": False,
                 "error": f"Daily limit reached. You used {used_q}/{cap_q} free analyses today.",
-                "quota": {"used": used_q, "cap": cap_q}
+                "quota": {"used": used_q, "cap": cap_q},
+                "report_id": last_rid,
+                "buy_url": buy_url
             }), 429
 
         # Language hint (presentation only; computation is language-agnostic)
@@ -4105,6 +4190,7 @@ def analyze():
         }
         rid = _report_store_put(resp, uid=uid)
         resp["report_id"] = rid
+        _last_report_set(ip, uid, rid)
         resp["generated_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
         return jsonify(resp)
 
