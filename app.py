@@ -3986,6 +3986,29 @@ def analyze():
         flight = get_era5_flight_stats(roi)
         flight_suitability = make_flight_suitability(flight, lang=lang)
 
+        # --- Presentation/i18n fixes for cards that still originate from core helpers ---
+        # Core analysis stays language-agnostic; these transforms are UI-only.
+        try:
+            topo = pres.present_topo(topo, lang=lang)
+        except Exception:
+            pass
+        try:
+            urban = pres.present_urban(urban, lang=lang)
+        except Exception:
+            pass
+        try:
+            transport = pres.present_transport(transport, lang=lang)
+        except Exception:
+            pass
+        try:
+            settlement = pres.present_settlement(settlement, lang=lang)
+        except Exception:
+            pass
+        try:
+            flight = pres.present_flight(flight, lang=lang)
+        except Exception:
+            pass
+
         # Enrich live climate text with ERA5 averages (if available)
         try:
             if flight.get("status") == "Aktif":
@@ -3993,7 +4016,8 @@ def analyze():
                 if tavg is not None:
                     tdesc = clim.get("temp", {}).get("desc", "")
                     clim.setdefault("temp", {})
-                    clim["temp"]["desc"] = f"{tdesc} | Ort: {float(tavg):.1f}°C (ERA5)"
+                    tag = "Avg:" if str(lang).lower().startswith("en") else "Ort:"
+                    clim["temp"]["desc"] = f"{tdesc} | {tag} {float(tavg):.1f}°C (ERA5)"
         except Exception:
             pass
 

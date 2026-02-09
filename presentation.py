@@ -5,6 +5,39 @@
 from __future__ import annotations
 from typing import Dict, Any, List
 
+# ---- Common label mappings (TR -> EN) for UI consistency ----
+LANDCOVER_TR_TO_EN = {
+    "Ağaçlık Alan": "Forest/Tree Cover",
+    "Orman": "Forest/Tree Cover",
+    "Çayır/Mera": "Grassland",
+    "Mera": "Grassland",
+    "Tarım Arazisi": "Agricultural Land",
+    "Tarım": "Agricultural Land",
+    "Sulak Alan": "Wetland",
+    "Su Yüzeyi": "Water",
+    "Su": "Water",
+    "Yerleşim": "Built-up",
+    "Yapılaşmış": "Built-up",
+    "Çıplak Alan": "Bare",
+}
+
+URBAN_TR_TO_EN = {
+    "Kırsal": "Rural",
+    "Banliyö": "Suburban",
+    "Şehirleşmiş": "Urbanized",
+}
+
+CARDINAL_TR_TO_EN = {
+    "Kuzey": "North",
+    "Kuzeydoğu": "Northeast",
+    "Doğu": "East",
+    "Güneydoğu": "Southeast",
+    "Güney": "South",
+    "Güneybatı": "Southwest",
+    "Batı": "West",
+    "Kuzeybatı": "Northwest",
+}
+
 MONTH_NAMES_TR = {
     1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
     7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"
@@ -96,7 +129,13 @@ def present_flora(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
     # Landcover top-3 string
     top: List[Dict[str, Any]] = core.get("landcover_top") or []
     if top:
-        lc_str = " | ".join([f"{x.get('name')}: %{x.get('pct')}" for x in top])
+        parts_lc = []
+        for x in top:
+            name = str(x.get("name") or "").strip()
+            if is_en(lang):
+                name = LANDCOVER_TR_TO_EN.get(name, name)
+            parts_lc.append(f"{name}: %{x.get('pct')}")
+        lc_str = " | ".join(parts_lc)
         land_desc = _t(lang, f"Arazi Örtüsü: {lc_str}", f"Land cover: {lc_str}")
     else:
         land_desc = _t(lang, "Arazi Örtüsü: Tespit Edilemedi", "Land cover: Not detected")
@@ -198,6 +237,7 @@ def present_climate(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
         except Exception:
             return None
         dirs_tr = ["Kuzey", "Kuzeydoğu", "Doğu", "Güneydoğu", "Güney", "Güneybatı", "Batı", "Kuzeybatı"]
+        # In English, prefer cardinal abbreviations for compact UI.
         dirs_en = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
         ix = int((deg + 22.5) // 45) % 8
         return (dirs_en[ix] if is_en(lang) else dirs_tr[ix])
@@ -217,3 +257,152 @@ def present_climate(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
         "humidity": {"val": hum_val, "desc": _t(lang, "Anlık Nem Oranı", "Current humidity"), "status": "Aktif"},
         "status": "Aktif",
     }
+
+
+def present_urban(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
+    """Translate urbanization card without touching the analysis logic."""
+    if not isinstance(core, dict):
+        return core
+    if core.get("status") != "Aktif":
+        return core
+
+    lbl = str(core.get("label") or core.get("val") or "--").strip()
+    raw = core.get("raw_val", core.get("value", None))
+    if is_en(lang):
+        lbl_out = URBAN_TR_TO_EN.get(lbl, lbl)
+        desc_out = f"Light Index: {round(float(raw), 1)}" if isinstance(raw, (int, float)) else "Light Index: --"
+    else:
+        lbl_out = lbl
+        desc_out = f"Işık Endeksi: {round(float(raw), 1)}" if isinstance(raw, (int, float)) else "Işık Endeksi: --"
+
+    out = dict(core)
+    out["val"] = lbl_out
+    out["label"] = lbl_out
+    out["desc"] = desc_out
+    return out
+
+
+def present_transport(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
+    if not isinstance(core, dict):
+        return core
+
+    out = dict(core)
+    status = out.get("status")
+    desc = str(out.get("desc") or "").strip()
+    if is_en(lang):
+        desc = desc.replace("En yakın yol", "Nearest road")
+        desc = desc.replace("Yol bulunamadı", "Road not found")
+        desc = desc.replace("Yol analizi hatası", "Road analysis error")
+        desc = desc.replace("(OSM)", "(OSM)")
+        out["desc"] = desc
+    else:
+        out["desc"] = desc
+    # Keep label as is (already km), but protect '--' message in EN for passive case
+    if status != "Aktif" and is_en(lang):
+        if "Yol bulunamadı" in str(core.get("desc") or ""):
+            out["desc"] = "Road not found (OSM)"
+        elif "Yol analizi" in str(core.get("desc") or ""):
+            out["desc"] = "Road analysis error"
+    return out
+
+
+def present_settlement(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
+    if not isinstance(core, dict):
+        return core
+    out = dict(core)
+    desc = str(out.get("desc") or "")
+    if is_en(lang):
+        desc = desc.replace("En yakın yerleşim", "Nearest settlement")
+        desc = desc.replace("içinde", "within")
+        desc = desc.replace("10 km içinde yerleşim tespit edilmedi", "No settlement detected within 10 km")
+        desc = desc.replace("Analiz Hatası", "Analysis error")
+        out["desc"] = desc
+    return out
+
+
+def present_topography(topo: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
+    """Translate slope/aspect/elevation descriptions produced by topo core."""
+    if not isinstance(topo, dict):
+        return topo
+
+    out = dict(topo)
+
+    # Elevation
+    elev = dict(out.get("elevation") or {})
+    if elev:
+        if is_en(lang):
+            elev["label"] = "Elevation"
+            elev["desc"] = "NASA SRTM"
+        else:
+            elev["label"] = "Yükseklik"
+            elev["desc"] = elev.get("desc") or "NASA SRTM"
+        out["elevation"] = elev
+
+    # Slope
+    slope = dict(out.get("slope") or {})
+    if slope:
+        if is_en(lang):
+            slope["label"] = "Slope"
+            # Make sure we don't leak TR words like 'derece'
+            slope["desc"] = "Land slope (SRTM, degrees→%)"
+        else:
+            slope["label"] = "Eğim"
+            slope["desc"] = "Arazi Eğimi (SRTM, derece->%)"
+        out["slope"] = slope
+
+    # Aspect
+    aspect = dict(out.get("aspect") or {})
+    if aspect:
+        # aspect label currently uses deg_to_cardinal (TR). Translate if needed.
+        lbl = str(aspect.get("label") or "--").strip()
+        if is_en(lang):
+            lbl = CARDINAL_TR_TO_EN.get(lbl, lbl)
+            aspect["label"] = lbl
+            # (Bakı) -> (Aspect)
+            desc = str(aspect.get("desc") or "")
+            desc = desc.replace("(Bakı)", "(Aspect)")
+            aspect["desc"] = desc
+        else:
+            # Keep as TR
+            aspect["desc"] = str(aspect.get("desc") or "")
+        out["aspect"] = aspect
+
+    return out
+
+
+def present_flight_window(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
+    """Translate ERA5 flight window card."""
+    if not isinstance(core, dict):
+        return core
+    out = dict(core)
+    if out.get("status") != "Aktif":
+        # Localize common passive message
+        desc = str(out.get("desc") or "")
+        if is_en(lang):
+            desc = desc.replace("ERA5 verisi alınamadı", "ERA5 data unavailable")
+            desc = desc.replace("ERA5 analizi hatası", "ERA5 analysis error")
+        out["desc"] = desc
+        return out
+
+    # Label: "217 gün/yıl" -> "217 days/year"
+    try:
+        days = int(round(float(out.get("value", out.get("val", 0)))))
+    except Exception:
+        days = None
+
+    if days is not None:
+        out["label"] = f"{days} days/year" if is_en(lang) else f"{days} gün/yıl"
+
+    desc = str(out.get("desc") or "")
+    if is_en(lang):
+        desc = desc.replace("Uçuş uygun gün", "Suitable flight days")
+        desc = desc.replace("Uçuş penceresi", "Flight window")
+        desc = desc.replace("Ort:", "Avg:")
+        desc = desc.replace("gün/yıl", "days/year")
+    out["desc"] = desc
+    return out
+
+
+# Backwards-compatible aliases (some call sites may use these names)
+present_topo = present_topography
+present_flight = present_flight_window
