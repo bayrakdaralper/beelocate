@@ -4008,6 +4008,10 @@ def analyze():
             flight = pres.present_flight(flight, lang=lang)
         except Exception:
             pass
+        try:
+            flight_suitability = pres.present_flight_suitability(flight_suitability, lang=lang)
+        except Exception:
+            pass
 
         # Enrich live climate text with ERA5 averages (if available)
         try:

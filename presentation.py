@@ -406,3 +406,40 @@ def present_flight_window(core: Dict[str, Any], lang: str = "tr") -> Dict[str, A
 # Backwards-compatible aliases (some call sites may use these names)
 present_topo = present_topography
 present_flight = present_flight_window
+
+
+def present_flight_suitability(core: Dict[str, Any], lang: str = "tr") -> Dict[str, Any]:
+    """Translate Flight Suitability card (derived from flight window).
+
+    Some branches still emit Turkish labels (e.g., "İyi") even when UI is English.
+    This is a pure presentation-layer fix (no core logic changes).
+    """
+    if not isinstance(core, dict):
+        core = {}
+
+    is_en = str(lang).lower().startswith("en")
+    if not is_en:
+        return core
+
+    out = dict(core)
+
+    # Status
+    st = str(out.get("status", "") or "")
+    out["status"] = "Active" if st.lower().startswith("akt") else ("Inactive" if st else st)
+
+    # Label translations (defensive: handle mixed strings)
+    lbl = str(out.get("label", "") or "")
+    lbl = lbl.replace("Çok İyi", "Very Good")
+    lbl = lbl.replace("İyi", "Good")
+    lbl = lbl.replace("Orta", "Medium")
+    lbl = lbl.replace("Zayıf", "Weak")
+    out["label"] = lbl
+
+    # Desc translations
+    desc = str(out.get("desc", "") or "")
+    desc = desc.replace("Uçuş penceresi", "Flight window")
+    desc = desc.replace("gün/yıl", "days/year")
+    desc = desc.replace("Ort:", "Avg:")
+    out["desc"] = desc
+
+    return out
