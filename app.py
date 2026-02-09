@@ -2444,7 +2444,45 @@ def urban_score_from_viirs(val):
 
 
 
-def get_urban(lat, lon, is_en: bool = True):
+def get_urban(lat=None, lon=None, is_en: bool = True, roi=None):
+    """Return an urban pressure class and a light index.
+
+    Some older branches called this as ``get_urban(roi)`` which crashed in
+    production with: ``TypeError: get_urban() missing 1 required positional argument: 'lon'``.
+    For launch stability we accept either:
+      • get_urban(lat, lon, ...)
+      • get_urban(roi=<ee.Geometry>, ...)
+      • get_urban(<ee.Geometry>, ... )  # legacy
+
+    If we cannot safely recover coordinates, we return a conservative fallback.
+    """
+
+    # Legacy call style: first positional is an ee.Geometry.
+    if lon is None and roi is None and lat is not None:
+        try:
+            import ee  # noqa: F401
+            if hasattr(lat, 'type') and str(getattr(lat, 'type')) == 'Geometry':
+                roi = lat
+                lat = None
+        except Exception:
+            pass
+
+    if roi is not None and (lat is None or lon is None):
+        # Best-effort centroid extraction. This is a server call; keep it guarded.
+        try:
+            coords = roi.centroid(1).coordinates().getInfo()
+            lon, lat = float(coords[0]), float(coords[1])
+        except Exception:
+            return {
+                "urban_class": ("Unknown" if is_en else "Bilinmiyor"),
+                "light_index": None,
+            }
+
+    if lat is None or lon is None:
+        return {
+            "urban_class": ("Unknown" if is_en else "Bilinmiyor"),
+            "light_index": None,
+        }
     """Nighttime lights (VIIRS) proxy for human pressure."""
     roi = ee.Geometry.Point([lon, lat]).buffer(2500)
     viirs = ee.ImageCollection('NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG')         .filterDate('2023-01-01', '2024-01-01')         .select('avg_rad')         .mean()
