@@ -2460,7 +2460,6 @@ def get_urban(lat=None, lon=None, is_en: bool = True, roi=None):
     # Legacy call style: first positional is an ee.Geometry.
     if lon is None and roi is None and lat is not None:
         try:
-            import ee  # noqa: F401
             if hasattr(lat, 'type') and str(getattr(lat, 'type')) == 'Geometry':
                 roi = lat
                 lat = None
