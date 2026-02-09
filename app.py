@@ -197,7 +197,40 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None
 
-DB_PATH = os.environ.get("BLP_DB_PATH", str(Path(app.root_path) / "blp.sqlite"))
+def _default_data_dir() -> Path:
+    """Choose a persistence directory.
+
+    Render disks are commonly mounted at /var/data. If present and writable, use it.
+    Falls back to the app directory for local/dev.
+    """
+    env_dir = (os.environ.get("BLP_DATA_DIR") or "").strip()
+    if env_dir:
+        try:
+            p = Path(env_dir)
+            p.mkdir(parents=True, exist_ok=True)
+            test = p / ".__blp_write_test"
+            test.write_text("ok", encoding="utf-8")
+            test.unlink(missing_ok=True)
+            return p
+        except Exception:
+            pass
+
+    p = Path("/var/data")
+    try:
+        if p.exists():
+            p.mkdir(parents=True, exist_ok=True)
+            test = p / ".__blp_write_test"
+            test.write_text("ok", encoding="utf-8")
+            test.unlink(missing_ok=True)
+            return p
+    except Exception:
+        pass
+
+    return Path(app.root_path)
+
+
+DATA_DIR = _default_data_dir()
+DB_PATH = os.environ.get("BLP_DB_PATH", str(DATA_DIR / "blp.sqlite"))
 REPORT_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 PAID_TTL_SECONDS = 60 * 60 * 24 * 30   # 30 days
 
@@ -228,7 +261,20 @@ def _db_init():
                 rid TEXT PRIMARY KEY,
                 paid_at REAL NOT NULL,
                 provider TEXT NOT NULL,
-                email TEXT
+                email TEXT,
+                ip TEXT
+            );
+            """
+        )
+
+        # Daily free-usage quota (MVP). Keyed primarily by IP.
+        # This prevents trivial abuse like switching browsers to reset client-side counters.
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS free_quota (
+                k TEXT PRIMARY KEY,
+                day_bucket INTEGER NOT NULL,
+                count INTEGER NOT NULL
             );
             """
         )
@@ -257,6 +303,10 @@ def _db_migrate_columns():
             cols = {r[1] for r in con.execute("PRAGMA table_info(reports)").fetchall()}
             if "uid" not in cols:
                 con.execute("ALTER TABLE reports ADD COLUMN uid TEXT")
+
+            pcols = {r[1] for r in con.execute("PRAGMA table_info(payments)").fetchall()}
+            if "ip" not in pcols:
+                con.execute("ALTER TABLE payments ADD COLUMN ip TEXT")
             con.commit()
     except Exception:
         # Never fail app startup due to migration issues.
@@ -272,6 +322,8 @@ def _db_gc():
         con.execute("DELETE FROM payments WHERE paid_at < ?", (now - PAID_TTL_SECONDS,))
         # Keep rate-limit buckets for ~2 days only.
         con.execute("DELETE FROM rate_limits WHERE window_start < ?", (int(now) - 2 * 86400,))
+        # Keep free quota buckets for ~3 days only.
+        con.execute("DELETE FROM free_quota WHERE day_bucket < ?", (int(now // 86400) - 3,))
         con.commit()
 
 
@@ -1226,14 +1278,48 @@ def _report_store_update(rid: str, payload: dict) -> None:
 # Payment store (SQLite)
 # ----------------------------
 
-def _paid_set(rid: str, provider: str, email: str = "") -> None:
+def _paid_set(rid: str, provider: str, email: str = "", ip: str = "") -> None:
     _db_gc()
     with _db() as con:
         con.execute(
-            "INSERT OR REPLACE INTO payments (rid, paid_at, provider, email) VALUES (?, ?, ?, ?)",
-            (rid, time.time(), provider, email or ""),
+            "INSERT OR REPLACE INTO payments (rid, paid_at, provider, email, ip) VALUES (?, ?, ?, ?, ?)",
+            (rid, time.time(), provider, email or "", ip or ""),
         )
         con.commit()
+
+
+def _paid_bind_ip(rid: str, ip: str) -> None:
+    """Bind an IP to a paid purchase (best-effort).
+
+    Purpose: allow the same buyer to use another browser/device on the same network
+    during the 24h unlimited window without a full login system.
+    """
+    if not (rid and ip):
+        return
+    try:
+        with _db() as con:
+            con.execute("UPDATE payments SET ip=? WHERE rid=?", (ip, rid))
+            con.commit()
+    except Exception:
+        pass
+
+
+def _ip_has_active_paid(ip: str) -> bool:
+    """Is there any paid purchase tied to this IP within the 24h window?"""
+    if not ip:
+        return False
+    now = time.time()
+    try:
+        with _db() as con:
+            row = con.execute(
+                "SELECT paid_at FROM payments WHERE ip = ? ORDER BY paid_at DESC LIMIT 1",
+                (ip,)
+            ).fetchone()
+        if not row:
+            return False
+        return (float(row[0]) + 60*60*24) > now
+    except Exception:
+        return False
 
 
 def _is_paid(report_id: str) -> bool:
@@ -3445,6 +3531,64 @@ def _rate_limit_allow(uid: str, ip: str) -> tuple[bool, str]:
         return True, ""
 
 
+def _free_quota_allow(ip: str, uid: str) -> tuple[bool, int, int]:
+    """Daily free analyses quota.
+
+    Returns: (allowed, used, cap)
+
+    MVP policy:
+    - Default cap is 5/day.
+    - Keyed by IP first (prevents the 'switch browser to reset' trick).
+    - UID is used as an additional key when present (helps NAT/shared IP cases a bit).
+    - If the IP has an active paid window, quota is bypassed.
+
+    This is not a perfect anti-fraud system (VPNs exist). It's a pragmatic guardrail.
+    """
+    cap = int(os.environ.get("FREE_DAILY_CAP", "5") or 5)
+    if cap <= 0:
+        return True, 0, cap
+    if _ip_has_active_paid(ip):
+        return True, 0, cap
+
+    day_bucket = int(time.time()) // 86400
+    keys = []
+    if ip:
+        keys.append(f"ip:{ip}:{day_bucket}")
+    if uid:
+        keys.append(f"uid:{uid}:{day_bucket}")
+    if not keys:
+        # Fail-open if we can't identify the caller at all.
+        return True, 0, cap
+
+    used = 0
+    try:
+        with _db() as con:
+            # We enforce the strictest (max used) among the keys.
+            for k in keys:
+                row = con.execute("SELECT count FROM free_quota WHERE k=?", (k,)).fetchone()
+                if row is not None:
+                    used = max(used, int(row[0] or 0))
+
+            if used >= cap:
+                return False, used, cap
+
+            # Increment all keys for this request.
+            for k in keys:
+                row = con.execute("SELECT count FROM free_quota WHERE k=?", (k,)).fetchone()
+                if row is None:
+                    con.execute(
+                        "INSERT OR REPLACE INTO free_quota (k, day_bucket, count) VALUES (?, ?, ?)",
+                        (k, day_bucket, 1),
+                    )
+                else:
+                    con.execute("UPDATE free_quota SET count=? WHERE k=?", (int(row[0] or 0) + 1, k))
+            con.commit()
+            return True, used + 1, cap
+    except Exception:
+        # Never break core product due to quota storage issues.
+        return True, 0, cap
+
+
 
 def get_demo_payload() -> dict:
     return {
@@ -3602,6 +3746,15 @@ def thank_you():
     if not rid:
         rid = request.view_args.get('rid', '') if request.view_args else ''
     paid_until = _paid_until_ts(rid) if rid else None
+    # Best-effort: bind buyer IP to the paid record so another browser on the same network
+    # can benefit from the 24h unlimited window (no-login MVP).
+    try:
+        if rid and _is_paid(rid):
+            fwd = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+            ip = fwd or (request.headers.get("X-Real-IP") or "").strip() or (request.remote_addr or "").strip()
+            _paid_bind_ip(rid, ip)
+    except Exception:
+        pass
     # Pre-warm premium AI insights after purchase so the report opens fast.
     try:
         if rid and _is_paid(rid):
@@ -3739,10 +3892,19 @@ def analyze():
         if not ok_rl:
             return jsonify({"ok": False, "error": msg_rl}), 429
 
-        # Language hint (used only for labels/text; computation is language-agnostic)
-        # MVP decision: English-only UI/text for now.
-        # (i18n keys exist; we'll re-enable language switching in FAZ-4.)
-        lang = 'en'
+        # Daily free quota (prevents 'switch browser to reset')
+        ok_q, used_q, cap_q = _free_quota_allow(ip, uid)
+        if not ok_q:
+            return jsonify({
+                "ok": False,
+                "error": f"Daily limit reached. You used {used_q}/{cap_q} free analyses today.",
+                "quota": {"used": used_q, "cap": cap_q}
+            }), 429
+
+        # Language hint (presentation only; computation is language-agnostic)
+        lang = (str(d.get('lang') or d.get('language') or 'en')).lower().strip()
+        if lang not in ('en', 'tr'):
+            lang = 'en'
 
         lat = d.get("lat")
         lon = d.get("lon") or d.get("lng")
