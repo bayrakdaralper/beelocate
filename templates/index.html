@@ -166,8 +166,8 @@
                         class="hidden md:block text-[10px] uppercase font-bold text-primary tracking-wider mr-2 animate-pulse">
                         <!-- JS Injected Title -->
                     </div>
-                    <label class="text-[10px] uppercase font-bold text-gray-500 tracking-wider hidden md:block">Analiz
-                        Dönemi:</label>
+                    <label id="lbl-analysis-period" class="text-[10px] uppercase font-bold text-gray-500 tracking-wider hidden md:block">Analysis
+                        period:</label>
                     <select id="month-selector" onchange="updateMonth(this.value)"
                         class="bg-black/40 border border-white/10 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-primary/50 transition cursor-pointer">
                         <option value="season" selected>🌿 RECOMMENDED SEASON (Fenoloji)</option>
@@ -206,8 +206,8 @@
                     <div
                         class="flex-1 bg-white/5 p-6 rounded-2xl border border-white/5 flex items-center justify-between">
                         <div>
-                            <div class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">ARAZİ UYGUNLUK
-                                PUANI</div>
+                            <div id="main-score-title" class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">LAND
+                                SUITABILITY SCORE</div>
                             <div class="flex items-baseline gap-2">
                                 <span class="text-6xl font-black text-primary" id="score-val">0</span>
                                 <span class="text-xl text-gray-500 font-bold">/100</span>

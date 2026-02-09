@@ -12,6 +12,111 @@ let selectedLat = null;
 let selectedLng = null;
 let currentLang = 'EN';
 
+// ------------------------------
+// Minimal static i18n (UI-only)
+// Core computations MUST remain language-agnostic.
+// ------------------------------
+const UI_I18N = {
+  EN: {
+    search_ph: 'Search location... (e.g., Sarıcakaya)',
+    analyze_btn: 'RUN ANALYSIS',
+    scan_radius: 'Scan radius (buffer)',
+    analysis_period: 'Analysis period:',
+    main_score_title: 'LAND SUITABILITY SCORE',
+    sys_title: 'PRE-ASSESSMENT',
+    loading: 'INITIALIZING SYSTEM...',
+    months: {
+      season: '🌿 RECOMMENDED SEASON (Phenology)',
+      current: '⚡ LIVE / NOW',
+      1: 'JAN (Simulation)',
+      2: 'FEB (Simulation)',
+      3: 'MAR (Simulation)',
+      4: 'APR (Simulation)',
+      5: 'MAY (Simulation)',
+      6: 'JUN (Simulation)',
+      7: 'JUL (Simulation)',
+      8: 'AUG (Simulation)',
+      9: 'SEP (Simulation)',
+      10: 'OCT (Simulation)',
+      11: 'NOV (Simulation)',
+      12: 'DEC (Simulation)'
+    },
+    managed_water_on: 'Managed Water: ON',
+    managed_water_off: 'Managed Water: OFF'
+  },
+  TR: {
+    search_ph: 'Konum ara... (örn. Sarıcakaya)',
+    analyze_btn: 'ANALİZİ BAŞLAT',
+    scan_radius: 'Tarama yarıçapı (buffer)',
+    analysis_period: 'Analiz dönemi:',
+    main_score_title: 'ARAZİ UYGUNLUK PUANI',
+    sys_title: 'ÖN DEĞERLENDİRME',
+    loading: 'SİSTEM BAŞLATILIYOR...',
+    months: {
+      season: '🌿 ÖNERİLEN SEZON (Fenoloji)',
+      current: '⚡ CANLI / ŞU AN',
+      1: 'OCAK (Simülasyon)',
+      2: 'ŞUBAT (Simülasyon)',
+      3: 'MART (Simülasyon)',
+      4: 'NİSAN (Simülasyon)',
+      5: 'MAYIS (Simülasyon)',
+      6: 'HAZİRAN (Simülasyon)',
+      7: 'TEMMUZ (Simülasyon)',
+      8: 'AĞUSTOS (Simülasyon)',
+      9: 'EYLÜL (Simülasyon)',
+      10: 'EKİM (Simülasyon)',
+      11: 'KASIM (Simülasyon)',
+      12: 'ARALIK (Simülasyon)'
+    },
+    managed_water_on: 'Yapay Su Desteği: AÇIK',
+    managed_water_off: 'Yapay Su Desteği: KAPALI'
+  }
+};
+
+function applyStaticI18n() {
+  const t = UI_I18N[currentLang] || UI_I18N.EN;
+
+  // HTML lang attribute
+  try { document.documentElement.lang = (currentLang === 'TR') ? 'tr' : 'en'; } catch (e) {}
+
+  const input = $('search-input');
+  if (input) input.placeholder = t.search_ph;
+
+  const btn = $('btn-analyze-text');
+  if (btn) btn.textContent = t.analyze_btn;
+
+  const lblRad = $('lbl-rad');
+  if (lblRad) lblRad.textContent = t.scan_radius;
+
+  const lblPeriod = $('lbl-analysis-period');
+  if (lblPeriod) lblPeriod.textContent = t.analysis_period;
+
+  const mainTitle = $('main-score-title');
+  if (mainTitle) mainTitle.textContent = t.main_score_title;
+
+  const sysTitle = $('sys-title');
+  if (sysTitle) sysTitle.textContent = t.sys_title;
+
+  const loading = $('loading-text');
+  if (loading) loading.textContent = t.loading;
+
+  // Month selector options (except 'season' which may be overwritten by phenology label)
+  const sel = $('month-selector');
+  if (sel && sel.options) {
+    for (const opt of Array.from(sel.options)) {
+      const v = opt.value;
+      if (v === 'season') continue; // handled by updateSeasonOptionLabel()
+      if (v === 'current') { opt.textContent = t.months.current; continue; }
+      const n = Number(v);
+      if (Number.isFinite(n) && t.months[n]) opt.textContent = t.months[n];
+    }
+  }
+
+  // Managed water label
+  const mw = $('water-managed-label');
+  if (mw) mw.textContent = waterManaged ? t.managed_water_on : t.managed_water_off;
+}
+
 function _getSavedLang() {
   try {
     const v = localStorage.getItem('blp_lang');
@@ -374,19 +479,8 @@ function setLang(lang) {
     }
   }
 
-  const input = $('search-input');
-  if (input) input.placeholder = currentLang === 'EN' ? 'Search location...' : 'Konum ara...';
-
-  const sysTitle = $('sys-title');
-  if (sysTitle) sysTitle.textContent = currentLang === 'EN' ? 'PRE-ASSESSMENT' : 'ÖN DEĞERLENDİRME';
-
-  // Refresh managed-water button label
-  const lbl = $('water-managed-label');
-  if (lbl) {
-    lbl.textContent = waterManaged
-      ? (currentLang==='EN' ? 'Managed Water: ON' : 'Yapay Su Desteği: AÇIK')
-      : (currentLang==='EN' ? 'Managed Water: OFF' : 'Yapay Su Desteği');
-  }
+  // Apply static UI translations
+  applyStaticI18n();
 }
 
 async function handleSearch(event) {
