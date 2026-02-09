@@ -737,7 +737,21 @@ async function startAnalysis() {
       body: JSON.stringify(payload)
     });
 
-    const data = await res.json();
+    // Be defensive: proxies / error handlers sometimes return non-JSON bodies.
+    // Never let a JSON parse failure look like a mysterious "99% stuck" crash.
+    let data = null;
+    try {
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const txt = await res.text();
+        data = { ok: false, error: txt || `HTTP ${res.status}` };
+      }
+    } catch (parseErr) {
+      console.error('Analyze response parse error:', parseErr);
+      data = { ok: false, error: `HTTP ${res.status}` };
+    }
     lastResult = data;
 
     // Server-side quota enforcement (prevents cross-browser abuse).
@@ -810,7 +824,8 @@ function renderResults(data) {
   // - Respect unit system for the numeric display
   let elevMetric;
   if (typeof elevRaw === 'number' && Number.isFinite(elevRaw)) {
-    if (UNITS === 'IMPERIAL') {
+    // Use currentUnits (UNITS is not a global in this build)
+    if (currentUnits === 'IMPERIAL') {
       const ft = elevRaw * 3.28084;
       elevMetric = { _main: `${Math.round(ft)} ft`, _sub: 'NASA SRTM' };
     } else {
@@ -823,7 +838,8 @@ function renderResults(data) {
     const vRaw = (elevRaw.value ?? elevRaw.val ?? null);
     const vNum = Number(vRaw);
     if (Number.isFinite(vNum)) {
-      if (UNITS === 'IMPERIAL') {
+      // Use currentUnits (UNITS is not a global in this build)
+      if (currentUnits === 'IMPERIAL') {
         const ft = vNum * 3.28084;
         elevMetric = { _main: `${Math.round(ft)} ft`, _sub: (elevRaw.desc || 'NASA SRTM') };
       } else {
