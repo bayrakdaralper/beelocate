@@ -11,6 +11,21 @@ let roiCircle = null;
 let selectedLat = null;
 let selectedLng = null;
 let currentLang = 'EN';
+
+function _getSavedLang() {
+  try {
+    const v = localStorage.getItem('blp_lang');
+    if (!v) return null;
+    const up = String(v).toUpperCase();
+    return (up === 'TR' || up === 'EN') ? up : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function _saveLang(v) {
+  try { localStorage.setItem('blp_lang', v); } catch (e) {}
+}
 let lastResult = null;
 let waterManaged = false;
 let baseLayer = null;
@@ -183,20 +198,20 @@ function formatCoords(lat, lon) {
   return `📍 ${a.toFixed(5)}, ${b.toFixed(5)}`;
 }
 
-function updateSeasonOptionLabel(seasonLabelTR) {
+function updateSeasonOptionLabel(seasonLabelTR, seasonLabelEN) {
   const sel = $('month-selector');
   if (!sel) return;
   const opt = Array.from(sel.options || []).find(o => o.value === 'season');
   if (!opt) return;
 
-  const raw = (seasonLabelTR || '').trim();
+  const raw = ((currentLang === 'EN' ? seasonLabelEN : seasonLabelTR) || '').trim();
   if (!raw) {
-    opt.textContent = '🌿 ÖNERİLEN SEZON (Fenoloji)';
+    opt.textContent = currentLang === 'EN' ? '🌿 RECOMMENDED SEASON (Phenology)' : '🌿 ÖNERİLEN SEZON (Fenoloji)';
     return;
   }
   // keep it short in the dropdown
   const short = raw.split(' (')[0]; // e.g., "Nisan–Haziran"
-  opt.textContent = `🌿 ÖNERİLEN SEZON (${short})`;
+  opt.textContent = currentLang === 'EN' ? `🌿 RECOMMENDED SEASON (${short})` : `🌿 ÖNERİLEN SEZON (${short})`;
 }
 
 
@@ -315,7 +330,11 @@ async function checkGeeHealth() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => waitForLeafletAndInit());
+document.addEventListener('DOMContentLoaded', () => {
+  // Restore preferred UI language (TR/EN). Only presentation uses this.
+  setLang(_getSavedLang() || 'EN');
+  waitForLeafletAndInit();
+});
 
 // ------------------------------
 // UI hooks called from HTML
@@ -333,21 +352,33 @@ function updateRadius(val) {
   if (roiCircle) roiCircle.setRadius(rad);
 }
 
-// MVP: English-only UI (i18n-ready). We keep the function for FAZ-4.
+// UI language toggle (presentation-only; core computation does not depend on language)
 function setLang(lang) {
-  currentLang = 'EN';
+  const up = String(lang || 'EN').toUpperCase();
+  currentLang = (up === 'TR') ? 'TR' : 'EN';
+  _saveLang(currentLang);
 
   const btnTR = $('btn-tr');
   const btnEN = $('btn-en');
-  // Hide language toggles in EN-only mode.
-  if (btnTR) btnTR.style.display = 'none';
-  if (btnEN) btnEN.style.display = 'none';
+  if (btnTR && btnEN) {
+    if (currentLang === 'TR') {
+      btnTR.classList.add('bg-primary', 'text-black');
+      btnTR.classList.remove('text-gray-400');
+      btnEN.classList.remove('bg-primary', 'text-black');
+      btnEN.classList.add('text-gray-400');
+    } else {
+      btnEN.classList.add('bg-primary', 'text-black');
+      btnEN.classList.remove('text-gray-400');
+      btnTR.classList.remove('bg-primary', 'text-black');
+      btnTR.classList.add('text-gray-400');
+    }
+  }
 
   const input = $('search-input');
-  if (input) input.placeholder = 'Search location...';
+  if (input) input.placeholder = currentLang === 'EN' ? 'Search location...' : 'Konum ara...';
 
   const sysTitle = $('sys-title');
-  if (sysTitle) sysTitle.textContent = 'PRE-ASSESSMENT';
+  if (sysTitle) sysTitle.textContent = currentLang === 'EN' ? 'PRE-ASSESSMENT' : 'ÖN DEĞERLENDİRME';
 
   // Refresh managed-water button label
   const lbl = $('water-managed-label');
@@ -526,12 +557,16 @@ async function startAnalysis() {
       month: month,
       rad: rad,
       water_managed: managed,
+      lang: (currentLang === 'EN' ? 'en' : 'tr'),
       uid: getOrCreateUid()
     };
 
     const res = await fetch('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept-Language': 'en' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept-Language': (currentLang === 'EN' ? 'en' : 'tr')
+      },
       body: JSON.stringify(payload)
     });
 
@@ -575,7 +610,8 @@ function renderResults(data) {
 
   // Update season label in dropdown (so user sees the actual recommended window)
   const seasonLabelTR = d?.season_meta?.season_label_tr;
-  updateSeasonOptionLabel(seasonLabelTR);
+  const seasonLabelEN = d?.season_meta?.season_label_en;
+  updateSeasonOptionLabel(seasonLabelTR, seasonLabelEN);
 
 
   // System message
