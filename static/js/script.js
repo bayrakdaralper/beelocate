@@ -812,7 +812,23 @@ function renderResults(data) {
       elevMetric = { _main: `${Math.round(elevRaw)} m`, _sub: 'NASA SRTM' };
     }
   } else if (elevRaw && typeof elevRaw === 'object') {
-    elevMetric = elevRaw;
+    // Backend topo.elevation can include both a human label ("Elevation") and a numeric val.
+    // Our card renderer prioritizes `label` over `val`, which can hide the number.
+    // Normalize to {_main,_sub} so the numeric elevation always shows.
+    const vRaw = (elevRaw.value ?? elevRaw.val ?? null);
+    const vNum = Number(vRaw);
+    if (Number.isFinite(vNum)) {
+      if (UNITS === 'IMPERIAL') {
+        const ft = vNum * 3.28084;
+        elevMetric = { _main: `${Math.round(ft)} ft`, _sub: (elevRaw.desc || 'NASA SRTM') };
+      } else {
+        elevMetric = { _main: `${Math.round(vNum)} m`, _sub: (elevRaw.desc || 'NASA SRTM') };
+      }
+    } else if (typeof elevRaw._main === 'string') {
+      elevMetric = elevRaw;
+    } else {
+      elevMetric = { _main: '--', _sub: (currentLang === 'EN') ? 'Data unavailable' : 'Veri yok' };
+    }
   } else {
     elevMetric = { _main: '--', _sub: (currentLang === 'EN') ? 'Data unavailable' : 'Veri yok' };
   }
@@ -908,6 +924,10 @@ function createCard(title, metric, icon, border) {
 
   // Unit conversion (presentation-only). Core values remain metric.
   if (currentUnits === 'IMPERIAL') {
+    // IMPORTANT: Do NOT convert day-count metrics (Flight Window / Flight Suitability)
+    // These are unitless counts and must remain identical across Metric/Imperial.
+    const _isDayCountCard = (t) => (t.includes('flight window') || t.includes('uçuş penceresi') || t.includes('flight suitability') || t.includes('uçuş uygunluğu'));
+
     const tt = (title || '').toLowerCase();
     const toNum = (s) => {
       const m = String(s).match(/-?\d+(?:\.\d+)?/);
@@ -925,8 +945,8 @@ function createCard(title, metric, icon, border) {
       }
     }
 
-    // Distances: km -> mi
-    if (tt.includes('road distance') || tt.includes('yol') || tt.includes('settlement') || tt.includes('yerleşim')) {
+    // Distances: km -> mi (only for true distance cards; never for day-count cards)
+    if (!_isDayCountCard(tt) && (tt.includes('road distance') || tt.includes('yol') || tt.includes('settlement') || tt.includes('yerleşim'))) {
       const v = toNum(main);
       if (Number.isFinite(v) && String(main).includes('km')) {
         const mi = v * 0.621371;
