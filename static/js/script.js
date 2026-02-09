@@ -262,14 +262,33 @@ function showLoadingScreen() {
   if (barEl) barEl.style.width = `0%`;
 
   if (loadingTimer) clearInterval(loadingTimer);
+  let dotPhase = 0;
   loadingTimer = setInterval(() => {
-    // climb quickly to 70, then creep to 90 while waiting
-    const target = loadingPct < 70 ? 70 : 90;
-    if (loadingPct < target) loadingPct += (loadingPct < 70 ? 7 : 1);
-    loadingPct = clamp(loadingPct, 0, 90);
-    if (pctEl) pctEl.textContent = `%${loadingPct}`;
-    if (barEl) barEl.style.width = `${loadingPct}%`;
-  }, 120);
+    // climb quickly to 70, then creep to 90, then keep moving (90→99)
+    // so users don't think the app froze during server-side processing.
+    let target = 70;
+    if (loadingPct >= 70) target = 90;
+    if (loadingPct >= 90) target = 99;
+
+    if (loadingPct < 70) loadingPct += 7;
+    else if (loadingPct < 90) loadingPct += 1;
+    else if (loadingPct < 99) loadingPct += 0.8;
+
+    loadingPct = clamp(loadingPct, 0, 99);
+    const shown = Math.floor(loadingPct);
+    if (pctEl) pctEl.textContent = `%${shown}`;
+    if (barEl) barEl.style.width = `${shown}%`;
+
+    // Update loading text after 90% to reduce "stuck" perception.
+    const txt = $('loading-text');
+    if (txt) {
+      if (shown >= 90) {
+        dotPhase = (dotPhase + 1) % 4;
+        const dots = '.'.repeat(dotPhase);
+        txt.textContent = (currentLang === 'TR') ? `SON İŞLEMLER YAPILIYOR${dots}` : `FINALIZING RESULTS${dots}`;
+      }
+    }
+  }, 90);
 }
 
 function hideLoadingScreen() {
@@ -506,9 +525,14 @@ function setUnits(units) {
   currentUnits = (up === 'IMPERIAL') ? 'IMPERIAL' : 'METRIC';
   _saveUnits(currentUnits);
 
-  const btnM = $('btn-metric');
-  const btnI = $('btn-imperial');
-  if (btnM && btnI) {
+  const pairs = [
+    ['btn-metric', 'btn-imperial'],
+    ['btn-metric-modal', 'btn-imperial-modal'],
+  ];
+  for (const [idM, idI] of pairs) {
+    const btnM = $(idM);
+    const btnI = $(idI);
+    if (!btnM || !btnI) continue;
     if (currentUnits === 'IMPERIAL') {
       btnI.classList.add('bg-primary', 'text-black');
       btnI.classList.remove('text-gray-400');
@@ -711,6 +735,17 @@ async function startAnalysis() {
     const data = await res.json();
     lastResult = data;
 
+    // Server-side quota enforcement (prevents cross-browser abuse).
+    if (res.status === 429) {
+      // Sync local counter to avoid repeated attempts feeling "buggy"
+      try {
+        const k = `blp_free_count_${_todayKey()}`;
+        localStorage.setItem(k, String(FREE_DAILY_LIMIT));
+      } catch (e) { /* ignore */ }
+      _showPaywall();
+      return;
+    }
+
     if (!res.ok) throw new Error(data?.error || 'API error');
 
     // Track report id so paywall can unlock the correct report.
@@ -762,6 +797,26 @@ function renderResults(data) {
 
   const topo = d.topography || {};
 
+  // Elevation sometimes comes back as a plain number (not a {label,val} object).
+  // Keep core metric as-is; wrap only for presentation so the card always shows a value.
+  const elevRaw = (topo.elevation ?? d.elevation);
+  // Normalize elevation presentation:
+  // - Always show a sane placeholder if missing
+  // - Respect unit system for the numeric display
+  let elevMetric;
+  if (typeof elevRaw === 'number' && Number.isFinite(elevRaw)) {
+    if (UNITS === 'IMPERIAL') {
+      const ft = elevRaw * 3.28084;
+      elevMetric = { _main: `${Math.round(ft)} ft`, _sub: 'NASA SRTM' };
+    } else {
+      elevMetric = { _main: `${Math.round(elevRaw)} m`, _sub: 'NASA SRTM' };
+    }
+  } else if (elevRaw && typeof elevRaw === 'object') {
+    elevMetric = elevRaw;
+  } else {
+    elevMetric = { _main: '--', _sub: (currentLang === 'EN') ? 'Data unavailable' : 'Veri yok' };
+  }
+
   const cards = [
     { title: currentLang==='EN' ? 'Vegetation' : 'Vejetasyon', icon: 'forest', border: 'border-green-500', metric: d.flora },
     { title: currentLang==='EN' ? 'Water' : 'Su Kaynağı', icon: 'water_drop', border: 'border-blue-500', metric: d.water },
@@ -777,7 +832,7 @@ function renderResults(data) {
     { title: currentLang==='EN' ? 'Flight Suitability' : 'Uçuş Uygunluğu', icon: 'fact_check', border: 'border-emerald-400', metric: d.flight_suitability },
     { title: currentLang==='EN' ? 'Precip' : 'Yağış', icon: 'rainy', border: 'border-cyan-500', metric: d.precip },
     // (removed duplicated flight cards)
-    { title: currentLang==='EN' ? 'Elevation' : 'Rakım', icon: 'terrain', border: 'border-indigo-500', metric: topo.elevation || d.elevation },
+    { title: currentLang==='EN' ? 'Elevation' : 'Rakım', icon: 'terrain', border: 'border-indigo-500', metric: elevMetric },
     { title: currentLang==='EN' ? 'Temperature' : 'Sıcaklık', icon: 'thermostat', border: 'border-pink-500', metric: d.climate?.temp },
   ];
 
@@ -790,6 +845,24 @@ function createCard(title, metric, icon, border) {
   const m = (metric && typeof metric === 'object') ? metric : {};
     let main = (m._main ?? m.label ?? m.val ?? '--');
   let sub = (m._sub ?? m.desc ?? '--');
+
+  // Presentation-only language cleanup for a few common mixed TR/EN fragments
+  // (we keep analysis logic untouched).
+  if (currentLang === 'EN') {
+    if (typeof main === 'string') {
+      main = main
+        .replace(/\bİyi\b/g, 'Good')
+        .replace(/\bÇok\s*iyi\b/g, 'Very Good')
+        .replace(/\bgün\/yıl\b/g, 'days/year');
+    }
+    if (typeof sub === 'string') {
+      sub = sub
+        .replace(/Uçuş\s*penceresi\s*:/gi, 'Flight window:')
+        .replace(/Uçuş\s*penceresi/gi, 'Flight window')
+        .replace(/gün\/yıl/gi, 'days/year')
+        .replace(/Ort\s*:/gi, 'Avg:');
+    }
+  }
 
   // Ensure Flight Suitability is not a duplicate of Flight Window
   const t = (title || '').toLowerCase();
