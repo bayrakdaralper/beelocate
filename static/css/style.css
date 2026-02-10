@@ -7,6 +7,19 @@
 
 #map { position: fixed; inset: 0; }
 
+/* iOS safe-area so top/bottom controls don't get cut off */
+:root {
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+
+/* Hide scrollbars for horizontal control rows (still scrollable) */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Analysis modal controls: allow horizontal swipe on mobile */
+.analysis-controls { -webkit-overflow-scrolling: touch; }
+
 /* Primary fallbacks (in case tailwind-config.js is missing) */
 .bg-primary { background-color: #fbbf24; }
 .hover\:bg-primary-hover:hover { background-color: #fcd34d; }

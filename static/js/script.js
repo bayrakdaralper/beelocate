@@ -11,6 +11,142 @@ let roiCircle = null;
 let selectedLat = null;
 let selectedLng = null;
 let currentLang = 'EN';
+let currentUnits = 'METRIC';
+
+// ------------------------------
+// Minimal static i18n (UI-only)
+// Core computations MUST remain language-agnostic.
+// ------------------------------
+const UI_I18N = {
+  EN: {
+    search_ph: 'Search location... (e.g., Sarıcakaya)',
+    analyze_btn: 'RUN ANALYSIS',
+    scan_radius: 'Scan radius (buffer)',
+    analysis_period: 'Analysis period:',
+    main_score_title: 'LAND SUITABILITY SCORE',
+    sys_title: 'PRE-ASSESSMENT',
+    loading: 'INITIALIZING SYSTEM...',
+    months: {
+      season: '🌿 RECOMMENDED SEASON (Phenology)',
+      current: '⚡ LIVE / NOW',
+      1: 'JAN (Simulation)',
+      2: 'FEB (Simulation)',
+      3: 'MAR (Simulation)',
+      4: 'APR (Simulation)',
+      5: 'MAY (Simulation)',
+      6: 'JUN (Simulation)',
+      7: 'JUL (Simulation)',
+      8: 'AUG (Simulation)',
+      9: 'SEP (Simulation)',
+      10: 'OCT (Simulation)',
+      11: 'NOV (Simulation)',
+      12: 'DEC (Simulation)'
+    },
+    managed_water_on: 'Managed Water: ON',
+    managed_water_off: 'Managed Water: OFF'
+  },
+  TR: {
+    search_ph: 'Konum ara... (örn. Sarıcakaya)',
+    analyze_btn: 'ANALİZİ BAŞLAT',
+    scan_radius: 'Tarama yarıçapı (buffer)',
+    analysis_period: 'Analiz dönemi:',
+    main_score_title: 'ARAZİ UYGUNLUK PUANI',
+    sys_title: 'ÖN DEĞERLENDİRME',
+    loading: 'SİSTEM BAŞLATILIYOR...',
+    months: {
+      season: '🌿 ÖNERİLEN SEZON (Fenoloji)',
+      current: '⚡ CANLI / ŞU AN',
+      1: 'OCAK (Simülasyon)',
+      2: 'ŞUBAT (Simülasyon)',
+      3: 'MART (Simülasyon)',
+      4: 'NİSAN (Simülasyon)',
+      5: 'MAYIS (Simülasyon)',
+      6: 'HAZİRAN (Simülasyon)',
+      7: 'TEMMUZ (Simülasyon)',
+      8: 'AĞUSTOS (Simülasyon)',
+      9: 'EYLÜL (Simülasyon)',
+      10: 'EKİM (Simülasyon)',
+      11: 'KASIM (Simülasyon)',
+      12: 'ARALIK (Simülasyon)'
+    },
+    managed_water_on: 'Yapay Su Desteği: AÇIK',
+    managed_water_off: 'Yapay Su Desteği: KAPALI'
+  }
+};
+
+function applyStaticI18n() {
+  const t = UI_I18N[currentLang] || UI_I18N.EN;
+
+  // HTML lang attribute
+  try { document.documentElement.lang = (currentLang === 'TR') ? 'tr' : 'en'; } catch (e) {}
+
+  const input = $('search-input');
+  if (input) input.placeholder = t.search_ph;
+
+  const btn = $('btn-analyze-text');
+  if (btn) btn.textContent = t.analyze_btn;
+
+  const lblRad = $('lbl-rad');
+  if (lblRad) lblRad.textContent = t.scan_radius;
+
+  const lblPeriod = $('lbl-analysis-period');
+  if (lblPeriod) lblPeriod.textContent = t.analysis_period;
+
+  const mainTitle = $('main-score-title');
+  if (mainTitle) mainTitle.textContent = t.main_score_title;
+
+  const sysTitle = $('sys-title');
+  if (sysTitle) sysTitle.textContent = t.sys_title;
+
+  const loading = $('loading-text');
+  if (loading) loading.textContent = t.loading;
+
+  // Month selector options (except 'season' which may be overwritten by phenology label)
+  const sel = $('month-selector');
+  if (sel && sel.options) {
+    for (const opt of Array.from(sel.options)) {
+      const v = opt.value;
+      if (v === 'season') continue; // handled by updateSeasonOptionLabel()
+      if (v === 'current') { opt.textContent = t.months.current; continue; }
+      const n = Number(v);
+      if (Number.isFinite(n) && t.months[n]) opt.textContent = t.months[n];
+    }
+  }
+
+  // Managed water label
+  const mw = $('water-managed-label');
+  if (mw) mw.textContent = waterManaged ? t.managed_water_on : t.managed_water_off;
+}
+
+function _getSavedLang() {
+  try {
+    const v = localStorage.getItem('blp_lang');
+    if (!v) return null;
+    const up = String(v).toUpperCase();
+    return (up === 'TR' || up === 'EN') ? up : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function _saveLang(v) {
+  try { localStorage.setItem('blp_lang', v); } catch (e) {}
+}
+
+function _getSavedUnits() {
+  try {
+    const v = localStorage.getItem('blp_units');
+    if (!v) return null;
+    const up = String(v).toUpperCase();
+    return (up === 'METRIC' || up === 'IMPERIAL') ? up : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function _saveUnits(v) {
+  try { localStorage.setItem('blp_units', v); } catch (e) {}
+}
 let lastResult = null;
 let waterManaged = false;
 let baseLayer = null;
@@ -126,14 +262,33 @@ function showLoadingScreen() {
   if (barEl) barEl.style.width = `0%`;
 
   if (loadingTimer) clearInterval(loadingTimer);
+  let dotPhase = 0;
   loadingTimer = setInterval(() => {
-    // climb quickly to 70, then creep to 90 while waiting
-    const target = loadingPct < 70 ? 70 : 90;
-    if (loadingPct < target) loadingPct += (loadingPct < 70 ? 7 : 1);
-    loadingPct = clamp(loadingPct, 0, 90);
-    if (pctEl) pctEl.textContent = `%${loadingPct}`;
-    if (barEl) barEl.style.width = `${loadingPct}%`;
-  }, 120);
+    // climb quickly to 70, then creep to 90, then keep moving (90→99)
+    // so users don't think the app froze during server-side processing.
+    let target = 70;
+    if (loadingPct >= 70) target = 90;
+    if (loadingPct >= 90) target = 99;
+
+    if (loadingPct < 70) loadingPct += 7;
+    else if (loadingPct < 90) loadingPct += 1;
+    else if (loadingPct < 99) loadingPct += 0.8;
+
+    loadingPct = clamp(loadingPct, 0, 99);
+    const shown = Math.floor(loadingPct);
+    if (pctEl) pctEl.textContent = `%${shown}`;
+    if (barEl) barEl.style.width = `${shown}%`;
+
+    // Update loading text after 90% to reduce "stuck" perception.
+    const txt = $('loading-text');
+    if (txt) {
+      if (shown >= 90) {
+        dotPhase = (dotPhase + 1) % 4;
+        const dots = '.'.repeat(dotPhase);
+        txt.textContent = (currentLang === 'TR') ? `SON İŞLEMLER YAPILIYOR${dots}` : `FINALIZING RESULTS${dots}`;
+      }
+    }
+  }, 90);
 }
 
 function hideLoadingScreen() {
@@ -183,20 +338,20 @@ function formatCoords(lat, lon) {
   return `📍 ${a.toFixed(5)}, ${b.toFixed(5)}`;
 }
 
-function updateSeasonOptionLabel(seasonLabelTR) {
+function updateSeasonOptionLabel(seasonLabelTR, seasonLabelEN) {
   const sel = $('month-selector');
   if (!sel) return;
   const opt = Array.from(sel.options || []).find(o => o.value === 'season');
   if (!opt) return;
 
-  const raw = (seasonLabelTR || '').trim();
+  const raw = ((currentLang === 'EN' ? seasonLabelEN : seasonLabelTR) || '').trim();
   if (!raw) {
-    opt.textContent = '🌿 ÖNERİLEN SEZON (Fenoloji)';
+    opt.textContent = currentLang === 'EN' ? '🌿 RECOMMENDED SEASON (Phenology)' : '🌿 ÖNERİLEN SEZON (Fenoloji)';
     return;
   }
   // keep it short in the dropdown
   const short = raw.split(' (')[0]; // e.g., "Nisan–Haziran"
-  opt.textContent = `🌿 ÖNERİLEN SEZON (${short})`;
+  opt.textContent = currentLang === 'EN' ? `🌿 RECOMMENDED SEASON (${short})` : `🌿 ÖNERİLEN SEZON (${short})`;
 }
 
 
@@ -315,7 +470,12 @@ async function checkGeeHealth() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => waitForLeafletAndInit());
+document.addEventListener('DOMContentLoaded', () => {
+  // Restore preferred UI language (TR/EN). Only presentation uses this.
+  setLang(_getSavedLang() || 'EN');
+  setUnits(_getSavedUnits() || 'METRIC');
+  waitForLeafletAndInit();
+});
 
 // ------------------------------
 // UI hooks called from HTML
@@ -333,29 +493,61 @@ function updateRadius(val) {
   if (roiCircle) roiCircle.setRadius(rad);
 }
 
-// MVP: English-only UI (i18n-ready). We keep the function for FAZ-4.
+// UI language toggle (presentation-only; core computation does not depend on language)
 function setLang(lang) {
-  currentLang = 'EN';
+  const up = String(lang || 'EN').toUpperCase();
+  currentLang = (up === 'TR') ? 'TR' : 'EN';
+  _saveLang(currentLang);
 
   const btnTR = $('btn-tr');
   const btnEN = $('btn-en');
-  // Hide language toggles in EN-only mode.
-  if (btnTR) btnTR.style.display = 'none';
-  if (btnEN) btnEN.style.display = 'none';
-
-  const input = $('search-input');
-  if (input) input.placeholder = 'Search location...';
-
-  const sysTitle = $('sys-title');
-  if (sysTitle) sysTitle.textContent = 'PRE-ASSESSMENT';
-
-  // Refresh managed-water button label
-  const lbl = $('water-managed-label');
-  if (lbl) {
-    lbl.textContent = waterManaged
-      ? (currentLang==='EN' ? 'Managed Water: ON' : 'Yapay Su Desteği: AÇIK')
-      : (currentLang==='EN' ? 'Managed Water: OFF' : 'Yapay Su Desteği');
+  if (btnTR && btnEN) {
+    if (currentLang === 'TR') {
+      btnTR.classList.add('bg-primary', 'text-black');
+      btnTR.classList.remove('text-gray-400');
+      btnEN.classList.remove('bg-primary', 'text-black');
+      btnEN.classList.add('text-gray-400');
+    } else {
+      btnEN.classList.add('bg-primary', 'text-black');
+      btnEN.classList.remove('text-gray-400');
+      btnTR.classList.remove('bg-primary', 'text-black');
+      btnTR.classList.add('text-gray-400');
+    }
   }
+
+  // Apply static UI translations
+  applyStaticI18n();
+}
+
+// Units toggle (presentation-only). Core computations remain metric.
+function setUnits(units) {
+  const up = String(units || 'METRIC').toUpperCase();
+  currentUnits = (up === 'IMPERIAL') ? 'IMPERIAL' : 'METRIC';
+  _saveUnits(currentUnits);
+
+  const pairs = [
+    ['btn-metric', 'btn-imperial'],
+    ['btn-metric-modal', 'btn-imperial-modal'],
+  ];
+  for (const [idM, idI] of pairs) {
+    const btnM = $(idM);
+    const btnI = $(idI);
+    if (!btnM || !btnI) continue;
+    if (currentUnits === 'IMPERIAL') {
+      btnI.classList.add('bg-primary', 'text-black');
+      btnI.classList.remove('text-gray-400');
+      btnM.classList.remove('bg-primary', 'text-black');
+      btnM.classList.add('text-gray-400');
+    } else {
+      btnM.classList.add('bg-primary', 'text-black');
+      btnM.classList.remove('text-gray-400');
+      btnI.classList.remove('bg-primary', 'text-black');
+      btnI.classList.add('text-gray-400');
+    }
+  }
+
+  // If a result is already visible, re-render to reflect unit conversion.
+  try { if (lastResult) renderResults(lastResult); } catch (e) {}
 }
 
 async function handleSearch(event) {
@@ -482,19 +674,24 @@ function _setLastReportId(rid) {
   if (rid) localStorage.setItem('blp_last_report_id', rid);
 }
 
-function _showPaywall() {
-  const rid = _lastReportId();
-  const msg = `Daily limit reached. You've used your ${FREE_DAILY_LIMIT} free analyses today.`;
-  const cta = rid ? `/buy/${rid}` : '/';
-  // Minimal modal fallback: use alert + redirect (keeps MVP stable)
+function _showPaywall(opts = {}) {
+  const rid = (opts.reportId || _lastReportId() || '').trim();
+  const msg = opts.message || `Daily limit reached. You've used your ${FREE_DAILY_LIMIT} free analyses today.`;
+  const uid = (opts.uid || getOrCreateUid() || '').trim();
+  const cta = (opts.buyUrl || (uid ? `/checkout?uid=${encodeURIComponent(uid)}` : '/checkout')).trim();
+
+  // Minimal modal fallback: confirm + redirect.
+  // IMPORTANT: If we don't have a report id, we still redirect to /pricing to let user unlock.
   if (confirm(`${msg}\n\nUnlock full report + unlimited analyses for 24 hours — $9.90`)) {
     window.location.href = cta;
   }
 }
 
 async function startAnalysis() {
-  if (_limitReached()) {
-    _showPaywall();
+  // If client thinks limit reached but we don't have a report id (storage cleared),
+  // let server decide and return the correct buy_url.
+  if (_limitReached() && _lastReportId()) {
+    _showPaywall({ uid: getOrCreateUid() });
     return;
   }
   if (!Number.isFinite(selectedLat) || !Number.isFinite(selectedLng)) {
@@ -526,17 +723,50 @@ async function startAnalysis() {
       month: month,
       rad: rad,
       water_managed: managed,
+      lang: (currentLang === 'EN' ? 'en' : 'tr'),
+      // IMPORTANT: analysis engine must be unit-invariant.
+      // Units are a presentation-only toggle; never alter core calculations.
+      // (This prevents Flight Window day-count from changing when switching units.)
+      units: 'metric',
       uid: getOrCreateUid()
     };
 
     const res = await fetch('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept-Language': 'en' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept-Language': (currentLang === 'EN' ? 'en' : 'tr')
+      },
       body: JSON.stringify(payload)
     });
 
-    const data = await res.json();
+    // Be defensive: proxies / error handlers sometimes return non-JSON bodies.
+    // Never let a JSON parse failure look like a mysterious "99% stuck" crash.
+    let data = null;
+    try {
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const txt = await res.text();
+        data = { ok: false, error: txt || `HTTP ${res.status}` };
+      }
+    } catch (parseErr) {
+      console.error('Analyze response parse error:', parseErr);
+      data = { ok: false, error: `HTTP ${res.status}` };
+    }
     lastResult = data;
+
+    // Server-side quota enforcement (prevents cross-browser abuse).
+    if (res.status === 429) {
+      // Sync local counter to avoid repeated attempts feeling "buggy"
+      try {
+        const k = `blp_free_count_${_todayKey()}`;
+        localStorage.setItem(k, String(FREE_DAILY_LIMIT));
+      } catch (e) { /* ignore */ }
+      _showPaywall({ reportId: (data && data.report_id) || '', buyUrl: (data && data.buy_url) || '', message: (data && data.error) || undefined, uid: getOrCreateUid() });
+      return;
+    }
 
     if (!res.ok) throw new Error(data?.error || 'API error');
 
@@ -575,7 +805,8 @@ function renderResults(data) {
 
   // Update season label in dropdown (so user sees the actual recommended window)
   const seasonLabelTR = d?.season_meta?.season_label_tr;
-  updateSeasonOptionLabel(seasonLabelTR);
+  const seasonLabelEN = d?.season_meta?.season_label_en;
+  updateSeasonOptionLabel(seasonLabelTR, seasonLabelEN);
 
 
   // System message
@@ -587,6 +818,44 @@ function renderResults(data) {
   grid.innerHTML = '';
 
   const topo = d.topography || {};
+
+  // Elevation sometimes comes back as a plain number (not a {label,val} object).
+  // Keep core metric as-is; wrap only for presentation so the card always shows a value.
+  const elevRaw = (topo.elevation ?? d.elevation);
+  // Normalize elevation presentation:
+  // - Always show a sane placeholder if missing
+  // - Respect unit system for the numeric display
+  let elevMetric;
+  if (typeof elevRaw === 'number' && Number.isFinite(elevRaw)) {
+    // Use currentUnits (UNITS is not a global in this build)
+    if (currentUnits === 'IMPERIAL') {
+      const ft = elevRaw * 3.28084;
+      elevMetric = { _main: `${Math.round(ft)} ft`, _sub: 'NASA SRTM' };
+    } else {
+      elevMetric = { _main: `${Math.round(elevRaw)} m`, _sub: 'NASA SRTM' };
+    }
+  } else if (elevRaw && typeof elevRaw === 'object') {
+    // Backend topo.elevation can include both a human label ("Elevation") and a numeric val.
+    // Our card renderer prioritizes `label` over `val`, which can hide the number.
+    // Normalize to {_main,_sub} so the numeric elevation always shows.
+    const vRaw = (elevRaw.value ?? elevRaw.val ?? null);
+    const vNum = Number(vRaw);
+    if (Number.isFinite(vNum)) {
+      // Use currentUnits (UNITS is not a global in this build)
+      if (currentUnits === 'IMPERIAL') {
+        const ft = vNum * 3.28084;
+        elevMetric = { _main: `${Math.round(ft)} ft`, _sub: (elevRaw.desc || 'NASA SRTM') };
+      } else {
+        elevMetric = { _main: `${Math.round(vNum)} m`, _sub: (elevRaw.desc || 'NASA SRTM') };
+      }
+    } else if (typeof elevRaw._main === 'string') {
+      elevMetric = elevRaw;
+    } else {
+      elevMetric = { _main: '--', _sub: (currentLang === 'EN') ? 'Data unavailable' : 'Veri yok' };
+    }
+  } else {
+    elevMetric = { _main: '--', _sub: (currentLang === 'EN') ? 'Data unavailable' : 'Veri yok' };
+  }
 
   const cards = [
     { title: currentLang==='EN' ? 'Vegetation' : 'Vejetasyon', icon: 'forest', border: 'border-green-500', metric: d.flora },
@@ -603,7 +872,7 @@ function renderResults(data) {
     { title: currentLang==='EN' ? 'Flight Suitability' : 'Uçuş Uygunluğu', icon: 'fact_check', border: 'border-emerald-400', metric: d.flight_suitability },
     { title: currentLang==='EN' ? 'Precip' : 'Yağış', icon: 'rainy', border: 'border-cyan-500', metric: d.precip },
     // (removed duplicated flight cards)
-    { title: currentLang==='EN' ? 'Elevation' : 'Rakım', icon: 'terrain', border: 'border-indigo-500', metric: topo.elevation || d.elevation },
+    { title: currentLang==='EN' ? 'Elevation' : 'Rakım', icon: 'terrain', border: 'border-indigo-500', metric: elevMetric },
     { title: currentLang==='EN' ? 'Temperature' : 'Sıcaklık', icon: 'thermostat', border: 'border-pink-500', metric: d.climate?.temp },
   ];
 
@@ -617,6 +886,24 @@ function createCard(title, metric, icon, border) {
     let main = (m._main ?? m.label ?? m.val ?? '--');
   let sub = (m._sub ?? m.desc ?? '--');
 
+  // Presentation-only language cleanup for a few common mixed TR/EN fragments
+  // (we keep analysis logic untouched).
+  if (currentLang === 'EN') {
+    if (typeof main === 'string') {
+      main = main
+        .replace(/\bİyi\b/g, 'Good')
+        .replace(/\bÇok\s*iyi\b/g, 'Very Good')
+        .replace(/\bgün\/yıl\b/g, 'days/year');
+    }
+    if (typeof sub === 'string') {
+      sub = sub
+        .replace(/Uçuş\s*penceresi\s*:/gi, 'Flight window:')
+        .replace(/Uçuş\s*penceresi/gi, 'Flight window')
+        .replace(/gün\/yıl/gi, 'days/year')
+        .replace(/Ort\s*:/gi, 'Avg:');
+    }
+  }
+
   // Ensure Flight Suitability is not a duplicate of Flight Window
   const t = (title || '').toLowerCase();
   if (t.includes('uçuş uygunluğu') || t.includes('flight suitability')) {
@@ -628,13 +915,98 @@ function createCard(title, metric, icon, border) {
       const d = Number.isFinite(days) ? days : Number(String(main).replace(/[^0-9.]/g,''));
       let cls = '--', sc = 0;
       if (Number.isFinite(d)) {
-        if (d < 120) { cls='Zayıf'; sc=20; }
-        else if (d < 180) { cls='Orta'; sc=45; }
-        else if (d < 240) { cls='İyi'; sc=70; }
-        else if (d < 300) { cls='Çok İyi'; sc=85; }
-        else { cls='Mükemmel'; sc=95; }
+        const EN = (currentLang === 'EN');
+        if (d < 120) { cls = EN ? 'Poor' : 'Zayıf'; sc=20; }
+        else if (d < 180) { cls = EN ? 'Moderate' : 'Orta'; sc=45; }
+        else if (d < 240) { cls = EN ? 'Good' : 'İyi'; sc=70; }
+        else if (d < 300) { cls = EN ? 'Very Good' : 'Çok İyi'; sc=85; }
+        else { cls = EN ? 'Excellent' : 'Mükemmel'; sc=95; }
         main = `${cls} (${sc}/100)`;
-        sub = `Uçuş penceresi: ${Math.round(d)} gün/yıl`;
+        sub = EN ? `Flight window: ${Math.round(d)} days/year` : `Uçuş penceresi: ${Math.round(d)} gün/yıl`;
+      }
+    }
+
+    // Even if backend sends Turkish labels, enforce English in EN mode (presentation-only).
+    if (currentLang === 'EN') {
+      if (typeof main === 'string') {
+        main = main
+          .replace(/Mükemmel/g, 'Excellent')
+          .replace(/Çok İyi/g, 'Very Good')
+          .replace(/İyi/g, 'Good')
+          .replace(/Orta/g, 'Moderate')
+          .replace(/Zayıf/g, 'Poor');
+      }
+      if (typeof sub === 'string') {
+        sub = sub
+          .replace(/Uçuş penceresi/g, 'Flight window')
+          .replace(/Uçuş uygun gün(ler)?/g, 'Suitable flight days')
+          .replace(/gün\/yıl/g, 'days/year')
+          .replace(/Ort\.?/g, 'Avg');
+      }
+    }
+  }
+
+  // Unit conversion (presentation-only). Core values remain metric.
+  if (currentUnits === 'IMPERIAL') {
+    // IMPORTANT: Do NOT convert day-count metrics (Flight Window / Flight Suitability)
+    // These are unitless counts and must remain identical across Metric/Imperial.
+    const _isDayCountCard = (t) => (t.includes('flight window') || t.includes('uçuş penceresi') || t.includes('flight suitability') || t.includes('uçuş uygunluğu'));
+
+    const tt = (title || '').toLowerCase();
+    const toNum = (s) => {
+      const m = String(s).match(/-?\d+(?:\.\d+)?/);
+      return m ? Number(m[0]) : NaN;
+    };
+    const replNum = (s, newNum) => String(s).replace(/-?\d+(?:\.\d+)?/, newNum);
+    const fmt1 = (x) => (Math.round(x*10)/10).toFixed(1);
+
+    // Wind: km/h -> mph
+    if ((/wind/.test(tt)) || (/rüzgar/.test(tt))) {
+      const v = toNum(main);
+      if (Number.isFinite(v)) {
+        const mph = v * 0.621371;
+        main = replNum(main, fmt1(mph)).replace('km/h', 'mph');
+      }
+    }
+
+    // Distances: km -> mi (only for true distance cards; never for day-count cards)
+    if (!_isDayCountCard(tt) && (tt.includes('road distance') || tt.includes('yol') || tt.includes('settlement') || tt.includes('yerleşim'))) {
+      const v = toNum(main);
+      if (Number.isFinite(v) && String(main).includes('km')) {
+        const mi = v * 0.621371;
+        main = replNum(main, fmt1(mi)).replace('km', 'mi');
+      }
+      const v2 = toNum(sub);
+      if (Number.isFinite(v2) && String(sub).includes('km')) {
+        const mi2 = v2 * 0.621371;
+        sub = replNum(sub, fmt1(mi2)).replace('km', 'mi');
+      }
+    }
+
+    // Elevation: m -> ft
+    if (tt.includes('elevation') || tt.includes('rakım')) {
+      const v = toNum(main);
+      if (Number.isFinite(v) && /m\b/.test(String(main))) {
+        const ft = v * 3.28084;
+        main = replNum(main, String(Math.round(ft))).replace(/m\b/, 'ft');
+      }
+    }
+
+    // Temperature: C -> F
+    if (tt.includes('temperature') || tt.includes('sıcaklık')) {
+      const v = toNum(main);
+      if (Number.isFinite(v) && String(main).includes('°C')) {
+        const f = (v * 9/5) + 32;
+        main = replNum(main, fmt1(f)).replace('°C', '°F');
+      }
+    }
+
+    // Precip: mm -> in
+    if (tt.includes('precip') || tt.includes('yağış')) {
+      const v = toNum(main);
+      if (Number.isFinite(v) && String(main).includes('mm')) {
+        const inch = v / 25.4;
+        main = replNum(main, fmt1(inch)).replace('mm', 'in');
       }
     }
   }

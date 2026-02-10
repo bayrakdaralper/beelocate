@@ -6,6 +6,7 @@ import os
 
 import ee
 import requests
+import presentation as pres
 from flask import Flask, render_template, request, jsonify, make_response, redirect, url_for
 
 
@@ -196,7 +197,40 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None
 
-DB_PATH = os.environ.get("BLP_DB_PATH", str(Path(app.root_path) / "blp.sqlite"))
+def _default_data_dir() -> Path:
+    """Choose a persistence directory.
+
+    Render disks are commonly mounted at /var/data. If present and writable, use it.
+    Falls back to the app directory for local/dev.
+    """
+    env_dir = (os.environ.get("BLP_DATA_DIR") or "").strip()
+    if env_dir:
+        try:
+            p = Path(env_dir)
+            p.mkdir(parents=True, exist_ok=True)
+            test = p / ".__blp_write_test"
+            test.write_text("ok", encoding="utf-8")
+            test.unlink(missing_ok=True)
+            return p
+        except Exception:
+            pass
+
+    p = Path("/var/data")
+    try:
+        if p.exists():
+            p.mkdir(parents=True, exist_ok=True)
+            test = p / ".__blp_write_test"
+            test.write_text("ok", encoding="utf-8")
+            test.unlink(missing_ok=True)
+            return p
+    except Exception:
+        pass
+
+    return Path(app.root_path)
+
+
+DATA_DIR = _default_data_dir()
+DB_PATH = os.environ.get("BLP_DB_PATH", str(DATA_DIR / "blp.sqlite"))
 REPORT_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 PAID_TTL_SECONDS = 60 * 60 * 24 * 30   # 30 days
 
@@ -227,10 +261,34 @@ def _db_init():
                 rid TEXT PRIMARY KEY,
                 paid_at REAL NOT NULL,
                 provider TEXT NOT NULL,
-                email TEXT
+                email TEXT,
+                ip TEXT
             );
             """
         )
+
+        # Daily free-usage quota (MVP). Keyed primarily by IP.
+        # This prevents trivial abuse like switching browsers to reset client-side counters.
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS free_quota (
+                k TEXT PRIMARY KEY,
+                day_bucket INTEGER NOT NULL,
+                count INTEGER NOT NULL
+            );
+            """
+        )
+        # Last computed report per day (MVP). Helps paywall flow when client storage is cleared.
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS last_reports (
+                k TEXT PRIMARY KEY,
+                day_bucket INTEGER NOT NULL,
+                rid TEXT NOT NULL
+            );
+            """
+        )
+
         # Very small rate-limit table (MVP). Keyed by window bucket.
         con.execute(
             """
@@ -256,6 +314,10 @@ def _db_migrate_columns():
             cols = {r[1] for r in con.execute("PRAGMA table_info(reports)").fetchall()}
             if "uid" not in cols:
                 con.execute("ALTER TABLE reports ADD COLUMN uid TEXT")
+
+            pcols = {r[1] for r in con.execute("PRAGMA table_info(payments)").fetchall()}
+            if "ip" not in pcols:
+                con.execute("ALTER TABLE payments ADD COLUMN ip TEXT")
             con.commit()
     except Exception:
         # Never fail app startup due to migration issues.
@@ -271,6 +333,8 @@ def _db_gc():
         con.execute("DELETE FROM payments WHERE paid_at < ?", (now - PAID_TTL_SECONDS,))
         # Keep rate-limit buckets for ~2 days only.
         con.execute("DELETE FROM rate_limits WHERE window_start < ?", (int(now) - 2 * 86400,))
+        # Keep free quota buckets for ~3 days only.
+        con.execute("DELETE FROM free_quota WHERE day_bucket < ?", (int(now // 86400) - 3,))
         con.commit()
 
 
@@ -1225,14 +1289,48 @@ def _report_store_update(rid: str, payload: dict) -> None:
 # Payment store (SQLite)
 # ----------------------------
 
-def _paid_set(rid: str, provider: str, email: str = "") -> None:
+def _paid_set(rid: str, provider: str, email: str = "", ip: str = "") -> None:
     _db_gc()
     with _db() as con:
         con.execute(
-            "INSERT OR REPLACE INTO payments (rid, paid_at, provider, email) VALUES (?, ?, ?, ?)",
-            (rid, time.time(), provider, email or ""),
+            "INSERT OR REPLACE INTO payments (rid, paid_at, provider, email, ip) VALUES (?, ?, ?, ?, ?)",
+            (rid, time.time(), provider, email or "", ip or ""),
         )
         con.commit()
+
+
+def _paid_bind_ip(rid: str, ip: str) -> None:
+    """Bind an IP to a paid purchase (best-effort).
+
+    Purpose: allow the same buyer to use another browser/device on the same network
+    during the 24h unlimited window without a full login system.
+    """
+    if not (rid and ip):
+        return
+    try:
+        with _db() as con:
+            con.execute("UPDATE payments SET ip=? WHERE rid=?", (ip, rid))
+            con.commit()
+    except Exception:
+        pass
+
+
+def _ip_has_active_paid(ip: str) -> bool:
+    """Is there any paid purchase tied to this IP within the 24h window?"""
+    if not ip:
+        return False
+    now = time.time()
+    try:
+        with _db() as con:
+            row = con.execute(
+                "SELECT paid_at FROM payments WHERE ip = ? ORDER BY paid_at DESC LIMIT 1",
+                (ip,)
+            ).fetchone()
+        if not row:
+            return False
+        return (float(row[0]) + 60*60*24) > now
+    except Exception:
+        return False
 
 
 def _is_paid(report_id: str) -> bool:
@@ -1814,39 +1912,54 @@ def get_sentinel_collection_safe(roi, start_date, end_date):
 # ----------------------------
 # 1) Water (hybrid)
 # ----------------------------
-def get_water_hybrid(roi, lang="tr"):
+def _water_core(roi):
+    """Core water detection. Language-agnostic."""
+    jrc_val = None
     try:
-        # A) JRC Global Surface Water (occurrence)
         jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
         jrc_val = jrc.reduceRegion(ee.Reducer.max(), roi, 30).get("occurrence").getInfo()
+        if jrc_val is not None:
+            jrc_val = float(jrc_val)
+    except Exception:
+        jrc_val = None
 
-        # B) Sentinel-2 NDWI max
+    ndwi_max = 0.0
+    try:
         s2_img = get_sentinel_collection_safe(roi, datetime.now() - timedelta(days=60), datetime.now())
-
-        ndwi_max = 0.0
         if s2_img:
-            ndwi = s2_img.normalizedDifference(["B3", "B8"])  # Green - NIR
+            ndwi = s2_img.normalizedDifference(["B3", "B8"])
             ndwi_val = ndwi.reduceRegion(ee.Reducer.max(), roi, 20).get("nd").getInfo()
             if ndwi_val is not None:
                 ndwi_max = float(ndwi_val)
+    except Exception:
+        ndwi_max = 0.0
 
-        if (jrc_val is not None and float(jrc_val) > 50) or (ndwi_max > 0.1):
-            src = "Kalıcı Su (JRC Global Water)" if (jrc_val is not None and float(jrc_val) > 50) else "Canlı Tespit (Uydu NDWI)"
-            is_en = str(lang).lower().startswith("en")
-            return {"val": 100, "score": 100, "label": ("Water Available" if is_en else "Su Kaynağı Var"), "desc": src, "status": "Aktif"}
+    has_jrc = (jrc_val is not None and jrc_val > 50)
+    has_ndwi = (ndwi_max > 0.1)
 
-        is_en = str(lang).lower().startswith("en")
-        return {"val": 0, "score": 0, "label": ("No Water Detected" if is_en else "Su Yok"), "desc": ("No surface water detected nearby" if is_en else "Yakınlarda su tespit edilemedi"), "status": "Aktif"}
+    if has_jrc:
+        return {"has_water": True, "source": "jrc", "jrc_occurrence_max": jrc_val, "ndwi_max": ndwi_max}
+    if has_ndwi:
+        return {"has_water": True, "source": "ndwi", "jrc_occurrence_max": jrc_val, "ndwi_max": ndwi_max}
+    return {"has_water": False, "source": "none", "jrc_occurrence_max": jrc_val, "ndwi_max": ndwi_max}
 
+
+def get_water_hybrid(roi, lang="tr"):
+    """Presentation wrapper (keeps old signature stable)."""
+    try:
+        core = _water_core(roi)
+        return pres.present_water(core, lang=lang)
     except Exception as e:
         print(f"Water Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "Analysis error", "status": "Pasif"}
 
 
 # ----------------------------
 # 2) Climate (Open-Meteo live)
 # ----------------------------
-def get_climate_smart(lat, lon):
+# ----------------------------
+def _climate_core(lat, lon):
+    """Core climate fetch from Open-Meteo. Language-agnostic."""
     try:
         url = (
             "https://api.open-meteo.com/v1/forecast"
@@ -1858,16 +1971,41 @@ def get_climate_smart(lat, lon):
         r = requests.get(url, headers=headers, timeout=7)
         live = r.json().get("current", {}) if r.status_code == 200 else {}
 
-        wind_dir = deg_to_cardinal(live.get("wind_direction_10m", 0))
+        def _f(x):
+            try:
+                return float(x)
+            except Exception:
+                return None
 
         return {
-            "temp": {"val": f"{live.get('temperature_2m', '--')}°C", "desc": "(Kaynak: Open-Meteo)", "status": "Aktif"},
-            "wind": {"val": f"{live.get('wind_speed_10m', '--')} km/h", "desc": f"Yön: {wind_dir}", "status": "Aktif"},
-            "humidity": {"val": f"%{live.get('relative_humidity_2m', '--')}", "desc": "Anlık Nem Oranı", "status": "Aktif"},
             "status": "Aktif",
+            "temperature_c": _f(live.get("temperature_2m")),
+            "humidity_pct": _f(live.get("relative_humidity_2m")),
+            "wind_kmh": _f(live.get("wind_speed_10m")),
+            "wind_dir_deg": _f(live.get("wind_direction_10m")),
+            "source": "Open-Meteo",
+            "reason": None,
         }
     except Exception as e:
-        print(f"İklim Hatası: {e}")
+        print(f"Climate Error: {e}")
+        return {
+            "status": "Pasif",
+            "temperature_c": None,
+            "humidity_pct": None,
+            "wind_kmh": None,
+            "wind_dir_deg": None,
+            "source": "Open-Meteo",
+            "reason": "exception",
+        }
+
+
+def get_climate_smart(lat, lon, lang="tr"):
+    """Presentation wrapper (keeps original behavior stable)."""
+    try:
+        core = _climate_core(lat, lon)
+        return pres.present_climate(core, lang=lang)
+    except Exception as e:
+        print(f"Climate Present Error: {e}")
         return {"temp": {}, "wind": {}, "humidity": {}, "status": "Pasif"}
 
 
@@ -1927,38 +2065,39 @@ def _worldcover_distribution(roi):
         return {}
 
 
-def get_flora(roi, month_arg, season_meta=None, lang="tr"):
+def _flora_core(roi, month_arg, season_meta=None):
+    """Core flora/forage signal from NDVI + landcover. Language-agnostic."""
     try:
-        # --- Resolve analysis window ---
-        # month_arg can be:
-        #   - "current"  -> last 30 days
-        #   - 1..12       -> simulated month window
-        #   - "season"   -> recommended season based on phenology (peak month)
+        peak_m = None
+        sos_m = None
+
         if month_arg == "season":
-            # Compute phenology if not provided
             if not isinstance(season_meta, dict):
                 season_meta = get_ndvi_phenology(roi)
             peak_m = season_meta.get("peak_month") if season_meta else None
+            sos_m = season_meta.get("sos_month") if season_meta else None
             if peak_m is None:
-                # Fallback to April (reasonable TR default) if phenology unavailable
                 peak_m = 4
             start_date, end_date, date_info = resolve_date_window(int(peak_m))
-
-            sos_m = season_meta.get("sos_month") if season_meta else None
-            months = MONTH_NAMES_EN if str(lang).lower().startswith("en") else MONTH_NAMES_TR
-            peak_name = months.get(int(peak_m), str(peak_m))
-            sos_name = months.get(int(sos_m), str(sos_m)) if sos_m else "--"
-            date_info = (f"Recommended window | SOS: {sos_name} | Peak: {peak_name}" if str(lang).lower().startswith("en")
-                         else f"Önerilen Sezon | SOS: {sos_name} | Peak: {peak_name}")
+            window_type = "season"
         else:
             start_date, end_date, date_info = resolve_date_window(month_arg)
+            window_type = "month"
 
         s2_img = get_sentinel_collection_safe(roi, start_date, end_date)
         if not s2_img:
-            return {"val": 0, "score": None,
-                    "label": ("No Data" if str(lang).lower().startswith("en") else "Veri Yok"),
-                    "desc": ("No Sentinel-2 image found" if str(lang).lower().startswith("en") else "Sentinel-2 Görüntüsü Bulunamadı"),
-                    "status": "Pasif"}
+            return {
+                "status": "Pasif",
+                "reason": "no_sentinel",
+                "ndvi": None,
+                "score": None,
+                "class_code": None,
+                "date_info": date_info,
+                "window_type": window_type,
+                "peak_month": peak_m,
+                "sos_month": sos_m,
+                "landcover_top": [],
+            }
 
         ndvi = s2_img.normalizedDifference(["B8", "B4"])
         val = ndvi.reduceRegion(ee.Reducer.mean(), roi, 20).get("nd").getInfo()
@@ -1968,38 +2107,63 @@ def get_flora(roi, month_arg, season_meta=None, lang="tr"):
 
         final_score = clamp(int(val * 120), 0, 100)
 
-        is_en = str(lang).lower().startswith("en")
         if val > 0.65:
-            label = "Very Dense Vegetation" if is_en else "Çok Yoğun Bitki Örtüsü"
+            class_code = "very_dense"
         elif val > 0.45:
-            label = "Dense Vegetation" if is_en else "Yoğun Bitki"
+            class_code = "dense"
         elif val > 0.25:
-            label = "Moderate / Sparse Vegetation" if is_en else "Orta-Seyrek Bitki"
+            class_code = "moderate"
         elif val > 0.10:
-            label = "Sparse / Mixed" if is_en else "Seyrek Bitki / Karışık"
+            class_code = "sparse"
         else:
-            label = "Bare / Built-up" if is_en else "Çıplak Zemin / Yapılaşma"
+            class_code = "bare"
 
-        # --- Landcover distribution (fixes the "Tip: Su Kütlesi" false label) ---
-        dist = _worldcover_distribution(roi)
-        if dist:
-            top = list(dist.items())[:3]
-            lc_str = " | ".join([f"{k}: %{v}" for k, v in top])
-            land_desc = (f"Land cover: {lc_str}" if is_en else f"Arazi Örtüsü: {lc_str}")
-        else:
-            land_desc = "Land cover: Not detected" if is_en else "Arazi Örtüsü: Tespit Edilemedi"
+        dist = _worldcover_distribution(roi) or {}
+        top = list(dist.items())[:3]
+        landcover_top = [{"name": k, "pct": v} for k, v in top]
 
-        desc = (f"NDVI: {round(val, 2)} (Sentinel-2) | {land_desc} | Window: {date_info}" if is_en
-                else f"NDVI: {round(val, 2)} (Sentinel-2) | {land_desc} | Dönem: {date_info}")
-        return {"val": final_score, "score": final_score, "label": label, "desc": desc, "status": "Aktif"}
+        return {
+            "status": "Aktif",
+            "reason": None,
+            "ndvi": val,
+            "score": final_score,
+            "class_code": class_code,
+            "date_info": date_info,
+            "window_type": window_type,
+            "peak_month": peak_m,
+            "sos_month": sos_m,
+            "landcover_top": landcover_top,
+        }
 
     except Exception as e:
+        print(f"Flora Core Error: {e}")
+        return {
+            "status": "Pasif",
+            "reason": "exception",
+            "ndvi": None,
+            "score": None,
+            "class_code": None,
+            "date_info": "--",
+            "window_type": "unknown",
+            "peak_month": None,
+            "sos_month": None,
+            "landcover_top": [],
+        }
+
+
+def get_flora(roi, month_arg, season_meta=None, lang="tr"):
+    """Presentation wrapper (keeps old signature stable)."""
+    try:
+        core = _flora_core(roi, month_arg, season_meta=season_meta)
+        return pres.present_flora(core, lang=lang)
+    except Exception as e:
         print(f"Flora Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Sistem Hatası", "status": "Pasif"}
+        return {"val": 0, "score": None, "label": "--", "desc": "System error", "status": "Pasif"}
 
 
 # ----------------------------
 # 4) Precipitation (CHIRPS)
+# ----------------------------
 # ----------------------------
 def precip_score_from_mm(mm):
     if mm is None:
@@ -2016,7 +2180,8 @@ def precip_score_from_mm(mm):
     return 50
 
 
-def get_precipitation(roi, month_arg):
+def _precip_core(roi, month_arg):
+    """Core precipitation (CHIRPS). Language-agnostic."""
     try:
         start_date, end_date, date_info = resolve_date_window(month_arg)
         start_str = start_date.strftime("%Y-%m-%d")
@@ -2024,23 +2189,31 @@ def get_precipitation(roi, month_arg):
 
         chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(start_str, end_str).filterBounds(roi)
         count = chirps.size().getInfo()
-        if not count or count == 0:
-            return {"val": 0, "score": None, "label": "Veri Yok", "desc": "CHIRPS yağış verisi bulunamadı", "status": "Pasif"}
+        if not count or int(count) == 0:
+            return {"status": "Pasif", "reason": "no_data", "mm": None, "score": None, "date_info": date_info, "source": "CHIRPS"}
 
         total = chirps.sum().rename("precip")
         mm = total.reduceRegion(ee.Reducer.mean(), roi, 5500).get("precip").getInfo()
         if mm is None:
-            return {"val": 0, "score": None, "label": "Veri Yok", "desc": "Yağış değeri alınamadı", "status": "Pasif"}
+            return {"status": "Pasif", "reason": "no_value", "mm": None, "score": None, "date_info": date_info, "source": "CHIRPS"}
 
         mm = float(mm)
         score = precip_score_from_mm(mm)
-        label = f"{mm:.0f} mm"
-        desc = f"Toplam Yağış ({date_info}) | Kaynak: CHIRPS"
-        return {"val": mm, "score": score, "label": label, "desc": desc, "status": "Aktif"}
+        return {"status": "Aktif", "reason": None, "mm": mm, "score": score, "date_info": date_info, "source": "CHIRPS"}
 
     except Exception as e:
-        print(f"Precip Error: {e}")
-        return {"val": 0, "score": None, "label": "--", "desc": "Analiz Hatası", "status": "Pasif"}
+        print(f"Precip Core Error: {e}")
+        return {"status": "Pasif", "reason": "exception", "mm": None, "score": None, "date_info": "--", "source": "CHIRPS"}
+
+
+def get_precipitation(roi, month_arg, lang="tr"):
+    """Presentation wrapper."""
+    try:
+        core = _precip_core(roi, month_arg)
+        return pres.present_precip(core, lang=lang)
+    except Exception as e:
+        print(f"Precip Present Error: {e}")
+        return {"val": 0, "score": None, "label": "--", "desc": "Analysis error", "status": "Pasif"}
 
 
 # ----------------------------
@@ -2087,16 +2260,40 @@ def aspect_score_deg(deg):
 
 
 def get_elevation_full(roi):
+    """Topography (Elevation + Slope + Aspect) from DEM.
+
+    Returns a dict with keys: elevation, slope, aspect.
+    Each value is a card-like dict (val/value/score/label/desc/status) expected by the UI.
+
+    Notes:
+      - Do NOT coerce missing DEM to 0. If DEM is unavailable, return empty dicts.
+      - Uses SRTM (USGS/SRTMGL1_003) at 30m. Scale may be relaxed by EE in bestEffort mode.
+    """
     try:
         dem = ee.Image("USGS/SRTMGL1_003")
         terrain = ee.Terrain.products(dem)
 
-        stats = terrain.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).getInfo()
+        # Mean slope/aspect/elevation over ROI (stable for your use-case)
+        stats = terrain.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=roi,
+            scale=30,
+            bestEffort=True,
+            maxPixels=1e9,
+        ).getInfo() or {}
 
-        elev = float(stats.get("elevation", 0) or 0)
-        slope_deg = float(stats.get("slope", 0) or 0)
-        aspect = float(stats.get("aspect", 0) or 0)
+        elev = stats.get("elevation", None)
+        slope_deg = stats.get("slope", None)
+        aspect = stats.get("aspect", None)
 
+        if elev is None or slope_deg is None or aspect is None:
+            return {"elevation": {}, "slope": {}, "aspect": {}}
+
+        elev = float(elev)
+        slope_deg = float(slope_deg)
+        aspect = float(aspect)
+
+        # Convert slope degrees -> percent
         slope_pct = math.tan(math.radians(slope_deg)) * 100.0
         slope_pct_i = int(round(slope_pct))
         elev_i = int(round(elev))
@@ -2105,25 +2302,27 @@ def get_elevation_full(roi):
         return {
             "elevation": {
                 "val": elev_i,
+                "value": elev_i,
                 "score": elevation_score_m(elev_i),
-                "label": f"{elev_i}m",
-                "desc": "NASA SRTM",
-                "status": "Aktif",
+                "label": f"{elev_i} m",
+                "desc": "Elevation (SRTM 30m)",
+                "status": "Active",
             },
             "slope": {
-                "val": f"%{slope_pct_i}",
+                "val": f"{slope_pct_i}%",
                 "value": slope_pct_i,
                 "score": slope_score_pct(slope_pct_i),
-                "label": "Eğim",
-                "desc": "Arazi Eğimi (SRTM, derece->%)",
-                "status": "Aktif",
+                "label": "Slope",
+                "desc": "Land slope (SRTM, degrees→%)",
+                "status": "Active",
             },
             "aspect": {
                 "val": aspect_i,
+                "value": aspect_i,
                 "score": aspect_score_deg(aspect_i),
                 "label": deg_to_cardinal(aspect_i),
-                "desc": f"{aspect_i}° (Bakı)",
-                "status": "Aktif",
+                "desc": f"{aspect_i}° (Aspect)",
+                "status": "Active",
             },
         }
     except Exception as e:
@@ -2131,9 +2330,6 @@ def get_elevation_full(roi):
         return {"elevation": {}, "slope": {}, "aspect": {}}
 
 
-# ----------------------------
-# 6) Urbanization (VIIRS night lights)
-# ----------------------------
 def urban_score_from_viirs(val):
     if val is None:
         return None
@@ -3369,6 +3565,64 @@ def _rate_limit_allow(uid: str, ip: str) -> tuple[bool, str]:
         return True, ""
 
 
+def _free_quota_allow(ip: str, uid: str) -> tuple[bool, int, int]:
+    """Daily free analyses quota.
+
+    Returns: (allowed, used, cap)
+
+    MVP policy:
+    - Default cap is 5/day.
+    - Keyed by IP first (prevents the 'switch browser to reset' trick).
+    - UID is used as an additional key when present (helps NAT/shared IP cases a bit).
+    - If the IP has an active paid window, quota is bypassed.
+
+    This is not a perfect anti-fraud system (VPNs exist). It's a pragmatic guardrail.
+    """
+    cap = int(os.environ.get("FREE_DAILY_CAP", "5") or 5)
+    if cap <= 0:
+        return True, 0, cap
+    if _ip_has_active_paid(ip):
+        return True, 0, cap
+
+    day_bucket = int(time.time()) // 86400
+    keys = []
+    if ip:
+        keys.append(f"ip:{ip}:{day_bucket}")
+    if uid:
+        keys.append(f"uid:{uid}:{day_bucket}")
+    if not keys:
+        # Fail-open if we can't identify the caller at all.
+        return True, 0, cap
+
+    used = 0
+    try:
+        with _db() as con:
+            # We enforce the strictest (max used) among the keys.
+            for k in keys:
+                row = con.execute("SELECT count FROM free_quota WHERE k=?", (k,)).fetchone()
+                if row is not None:
+                    used = max(used, int(row[0] or 0))
+
+            if used >= cap:
+                return False, used, cap
+
+            # Increment all keys for this request.
+            for k in keys:
+                row = con.execute("SELECT count FROM free_quota WHERE k=?", (k,)).fetchone()
+                if row is None:
+                    con.execute(
+                        "INSERT OR REPLACE INTO free_quota (k, day_bucket, count) VALUES (?, ?, ?)",
+                        (k, day_bucket, 1),
+                    )
+                else:
+                    con.execute("UPDATE free_quota SET count=? WHERE k=?", (int(row[0] or 0) + 1, k))
+            con.commit()
+            return True, used + 1, cap
+    except Exception:
+        # Never break core product due to quota storage issues.
+        return True, 0, cap
+
+
 
 def get_demo_payload() -> dict:
     return {
@@ -3396,6 +3650,54 @@ def get_demo_payload() -> dict:
     }
 
 
+
+def _last_report_set(ip: str, uid: str, rid: str) -> None:
+    """Persist the last generated report id for this caller/day (MVP).
+
+    Purpose: when a user hits the daily cap and client storage is cleared,
+    we can still send them to the correct /buy/<rid> page.
+    """
+    try:
+        day_bucket = int(time.time()) // 86400
+        keys = []
+        if ip:
+            keys.append(f"ip:{ip}:{day_bucket}")
+        if uid:
+            keys.append(f"uid:{uid}:{day_bucket}")
+        if not keys or not rid:
+            return
+        with _db() as con:
+            for k in keys:
+                con.execute(
+                    "INSERT OR REPLACE INTO last_reports (k, day_bucket, rid) VALUES (?, ?, ?)",
+                    (k, day_bucket, rid),
+                )
+            con.commit()
+    except Exception:
+        return
+
+
+def _last_report_get(ip: str, uid: str) -> str:
+    """Get the last report id for this caller/day (best-effort)."""
+    try:
+        day_bucket = int(time.time()) // 86400
+        keys = []
+        if ip:
+            keys.append(f"ip:{ip}:{day_bucket}")
+        if uid:
+            keys.append(f"uid:{uid}:{day_bucket}")
+        if not keys:
+            return ""
+        with _db() as con:
+            for k in keys:
+                row = con.execute("SELECT rid FROM last_reports WHERE k=?", (k,)).fetchone()
+                if row and row[0]:
+                    return str(row[0])
+    except Exception:
+        pass
+    return ""
+
+
 @app.route("/report-preview")
 def report_preview():
     payload = get_demo_payload()
@@ -3403,6 +3705,28 @@ def report_preview():
     payload["report_id"] = rid
     html = _render_report_html(payload, report_id=rid, pdf_mode=False, is_paid=_is_paid(rid))
     return html
+
+
+
+
+@app.route("/checkout")
+def checkout():
+    """Redirect helper so paywall can always send the user somewhere deterministic.
+
+    It finds the last report for the caller for today (ip/uid) and redirects to /buy/<rid>.
+    If none exists, it redirects to landing with a short message.
+    """
+    try:
+        uid = (request.args.get("uid") or "").strip()
+        fwd = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        ip = fwd or (request.headers.get("X-Real-IP") or "").strip() or (request.remote_addr or "").strip()
+        rid = _last_report_get(ip, uid)
+        if rid:
+            return redirect(url_for("buy_report", rid=rid))
+        # No stored report: user probably cleared storage before generating a report today.
+        return redirect(url_for("index"))
+    except Exception:
+        return redirect(url_for("index"))
 
 
 
@@ -3526,6 +3850,15 @@ def thank_you():
     if not rid:
         rid = request.view_args.get('rid', '') if request.view_args else ''
     paid_until = _paid_until_ts(rid) if rid else None
+    # Best-effort: bind buyer IP to the paid record so another browser on the same network
+    # can benefit from the 24h unlimited window (no-login MVP).
+    try:
+        if rid and _is_paid(rid):
+            fwd = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+            ip = fwd or (request.headers.get("X-Real-IP") or "").strip() or (request.remote_addr or "").strip()
+            _paid_bind_ip(rid, ip)
+    except Exception:
+        pass
     # Pre-warm premium AI insights after purchase so the report opens fast.
     try:
         if rid and _is_paid(rid):
@@ -3663,10 +3996,23 @@ def analyze():
         if not ok_rl:
             return jsonify({"ok": False, "error": msg_rl}), 429
 
-        # Language hint (used only for labels/text; computation is language-agnostic)
-        # MVP decision: English-only UI/text for now.
-        # (i18n keys exist; we'll re-enable language switching in FAZ-4.)
-        lang = 'en'
+        # Daily free quota (prevents 'switch browser to reset')
+        ok_q, used_q, cap_q = _free_quota_allow(ip, uid)
+        if not ok_q:
+            last_rid = _last_report_get(ip, uid)
+            buy_url = f"/checkout?uid={uid}"
+            return jsonify({
+                "ok": False,
+                "error": f"Daily limit reached. You used {used_q}/{cap_q} free analyses today.",
+                "quota": {"used": used_q, "cap": cap_q},
+                "report_id": last_rid,
+                "buy_url": buy_url
+            }), 429
+
+        # Language hint (presentation only; computation is language-agnostic)
+        lang = (str(d.get('lang') or d.get('language') or 'en')).lower().strip()
+        if lang not in ('en', 'tr'):
+            lang = 'en'
 
         lat = d.get("lat")
         lon = d.get("lon") or d.get("lng")
@@ -3740,13 +4086,40 @@ def analyze():
         flora = get_flora(roi, target_month, season_meta=season_meta, lang=lang)
         water = get_water_hybrid(roi, lang=lang)
         topo = get_elevation_full(roi)
-        clim = get_climate_smart(lat, lon)
+        clim = get_climate_smart(lat, lon, lang=lang)
         urban = get_urban(roi)
         transport = get_transport(lon, lat)
-        precip = get_precipitation(roi, target_month_for_precip)
+        precip = get_precipitation(roi, target_month_for_precip, lang=lang)
         settlement = get_settlement(lon, lat)
         flight = get_era5_flight_stats(roi)
         flight_suitability = make_flight_suitability(flight, lang=lang)
+
+        # --- Presentation/i18n fixes for cards that still originate from core helpers ---
+        # Core analysis stays language-agnostic; these transforms are UI-only.
+        try:
+            topo = pres.present_topo(topo, lang=lang)
+        except Exception:
+            pass
+        try:
+            urban = pres.present_urban(urban, lang=lang)
+        except Exception:
+            pass
+        try:
+            transport = pres.present_transport(transport, lang=lang)
+        except Exception:
+            pass
+        try:
+            settlement = pres.present_settlement(settlement, lang=lang)
+        except Exception:
+            pass
+        try:
+            flight = pres.present_flight(flight, lang=lang)
+        except Exception:
+            pass
+        try:
+            flight_suitability = pres.present_flight_suitability(flight_suitability, lang=lang)
+        except Exception:
+            pass
 
         # Enrich live climate text with ERA5 averages (if available)
         try:
@@ -3755,7 +4128,8 @@ def analyze():
                 if tavg is not None:
                     tdesc = clim.get("temp", {}).get("desc", "")
                     clim.setdefault("temp", {})
-                    clim["temp"]["desc"] = f"{tdesc} | Ort: {float(tavg):.1f}°C (ERA5)"
+                    tag = "Avg:" if str(lang).lower().startswith("en") else "Ort:"
+                    clim["temp"]["desc"] = f"{tdesc} | {tag} {float(tavg):.1f}°C (ERA5)"
         except Exception:
             pass
 
@@ -3839,6 +4213,7 @@ def analyze():
         }
         rid = _report_store_put(resp, uid=uid)
         resp["report_id"] = rid
+        _last_report_set(ip, uid, rid)
         resp["generated_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
         return jsonify(resp)
 
@@ -3875,6 +4250,38 @@ def analyze():
             }
         )
 
+
+
+
+# ----------------------------
+# API Signature Lock (fail fast)
+# ----------------------------
+def _signature_lock():
+    """Fail fast if someone breaks core function call contracts.
+    This prevents the 'same function called 3 different ways' disaster.
+    """
+    import inspect as _inspect
+
+    expected = {
+        "get_urban": "(roi)",
+        "get_settlement": "(lon, lat)",
+        "get_transport": "(lon, lat)",
+        "get_transport_overpass": "(lon, lat)",
+        "get_water_hybrid": "(roi, lang='tr')",
+        "get_flora": "(roi, month_arg, season_meta=None, lang='tr')",
+    }
+
+    for fn_name, sig_str in expected.items():
+        fn = globals().get(fn_name)
+        if not fn:
+            raise RuntimeError(f"SignatureLock: missing function {fn_name}")
+        got = str(_inspect.signature(fn))
+        # normalize quotes
+        got_norm = got.replace('"', "'")
+        if got_norm != sig_str:
+            raise RuntimeError(f"SignatureLock: {fn_name} expected {sig_str} but got {got}")
+
+_signature_lock()
 
 
 
