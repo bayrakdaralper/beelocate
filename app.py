@@ -278,17 +278,6 @@ def _db_init():
             );
             """
         )
-        # Last computed report per day (MVP). Helps paywall flow when client storage is cleared.
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS last_reports (
-                k TEXT PRIMARY KEY,
-                day_bucket INTEGER NOT NULL,
-                rid TEXT NOT NULL
-            );
-            """
-        )
-
         # Very small rate-limit table (MVP). Keyed by window bucket.
         con.execute(
             """
@@ -2260,97 +2249,53 @@ def aspect_score_deg(deg):
 
 
 def get_elevation_full(roi):
-    """Return elevation stats for ROI.
-
-    IMPORTANT:
-      - Never coerce missing elevation to 0. A missing DEM sample is *unknown*, not sea level.
-      - Use point sampling first (most robust), then fall back to ROI mean.
-
-    Returns dict like:
-      {"val": <float meters> or None, "min":..., "max":..., "mean":..., "src": "SRTM"/"NASADEM"/...}
-    """
     try:
-        # Prefer centroid sampling. ROI comes in as an ee.Geometry.
-        try:
-            pt = roi.centroid(1)
-        except Exception:
-            pt = roi
+        dem = ee.Image("USGS/SRTMGL1_003")
+        terrain = ee.Terrain.products(dem)
 
-        def _sample(img, band='elevation', scale=30):
-            try:
-                # sample() is generally more reliable than reduceRegion over complex geoms.
-                fc = img.select([band]).sample(region=pt, scale=scale, numPixels=1, geometries=False)
-                f = fc.first()
-                if f is None:
-                    return None
-                v = f.get(band)
-                if v is None:
-                    return None
-                # getInfo() at the very end to keep server-side work in EE.
-                vv = v.getInfo()
-                if vv is None:
-                    return None
-                return float(vv)
-            except Exception:
-                return None
+        stats = terrain.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).getInfo()
 
-        # Try a small ladder of DEMs (coverage + resilience)
-        candidates = [
-            (ee.Image('USGS/SRTMGL1_003'), 'SRTM', 30),
-            (ee.Image('NASA/NASADEM_HGT/001'), 'NASADEM', 30),
-            (ee.Image('CGIAR/SRTM90_V4'), 'SRTM90', 90),
-        ]
+        elev = float(stats.get("elevation", 0) or 0)
+        slope_deg = float(stats.get("slope", 0) or 0)
+        aspect = float(stats.get("aspect", 0) or 0)
 
-        elev = None
-        src = None
-        for img, name, sc in candidates:
-            elev = _sample(img, 'elevation', sc)
-            if elev is not None:
-                src = name
-                break
+        slope_pct = math.tan(math.radians(slope_deg)) * 100.0
+        slope_pct_i = int(round(slope_pct))
+        elev_i = int(round(elev))
+        aspect_i = int(round(aspect))
 
-        # If point sampling failed, attempt ROI mean as last resort.
-        mean = None
-        mn = None
-        mx = None
-        if elev is None:
-            try:
-                img = ee.Image('USGS/SRTMGL1_003').select('elevation')
-                stats = img.reduceRegion(
-                    reducer=ee.Reducer.mean().combine(ee.Reducer.min(), True).combine(ee.Reducer.max(), True),
-                    geometry=roi,
-                    scale=90,
-                    bestEffort=True,
-                    maxPixels=1e9,
-                )
-                # These keys can vary slightly; be defensive.
-                mean = stats.get('elevation_mean').getInfo() if stats.get('elevation_mean') is not None else None
-                mn = stats.get('elevation_min').getInfo() if stats.get('elevation_min') is not None else None
-                mx = stats.get('elevation_max').getInfo() if stats.get('elevation_max') is not None else None
-                if mean is not None:
-                    elev = float(mean)
-                    src = 'SRTM_mean'
-            except Exception:
-                pass
-
-        # Normalize outputs
-        def _f(x):
-            try:
-                return float(x) if x is not None else None
-            except Exception:
-                return None
-
-        out = {
-            'val': _f(elev),
-            'mean': _f(mean),
-            'min': _f(mn),
-            'max': _f(mx),
-            'src': src or 'unknown',
+        return {
+            "elevation": {
+                "val": elev_i,
+                "score": elevation_score_m(elev_i),
+                "label": f"{elev_i}m",
+                "desc": "NASA SRTM",
+                "status": "Aktif",
+            },
+            "slope": {
+                "val": f"%{slope_pct_i}",
+                "value": slope_pct_i,
+                "score": slope_score_pct(slope_pct_i),
+                "label": "Eğim",
+                "desc": "Arazi Eğimi (SRTM, derece->%)",
+                "status": "Aktif",
+            },
+            "aspect": {
+                "val": aspect_i,
+                "score": aspect_score_deg(aspect_i),
+                "label": deg_to_cardinal(aspect_i),
+                "desc": f"{aspect_i}° (Bakı)",
+                "status": "Aktif",
+            },
         }
-        return out
-    except Exception:
-        return {'val': None, 'mean': None, 'min': None, 'max': None, 'src': 'error'}
+    except Exception as e:
+        print(f"Topo Error: {e}")
+        return {"elevation": {}, "slope": {}, "aspect": {}}
 
+
+# ----------------------------
+# 6) Urbanization (VIIRS night lights)
+# ----------------------------
 def urban_score_from_viirs(val):
     if val is None:
         return None
@@ -3671,54 +3616,6 @@ def get_demo_payload() -> dict:
     }
 
 
-
-def _last_report_set(ip: str, uid: str, rid: str) -> None:
-    """Persist the last generated report id for this caller/day (MVP).
-
-    Purpose: when a user hits the daily cap and client storage is cleared,
-    we can still send them to the correct /buy/<rid> page.
-    """
-    try:
-        day_bucket = int(time.time()) // 86400
-        keys = []
-        if ip:
-            keys.append(f"ip:{ip}:{day_bucket}")
-        if uid:
-            keys.append(f"uid:{uid}:{day_bucket}")
-        if not keys or not rid:
-            return
-        with _db() as con:
-            for k in keys:
-                con.execute(
-                    "INSERT OR REPLACE INTO last_reports (k, day_bucket, rid) VALUES (?, ?, ?)",
-                    (k, day_bucket, rid),
-                )
-            con.commit()
-    except Exception:
-        return
-
-
-def _last_report_get(ip: str, uid: str) -> str:
-    """Get the last report id for this caller/day (best-effort)."""
-    try:
-        day_bucket = int(time.time()) // 86400
-        keys = []
-        if ip:
-            keys.append(f"ip:{ip}:{day_bucket}")
-        if uid:
-            keys.append(f"uid:{uid}:{day_bucket}")
-        if not keys:
-            return ""
-        with _db() as con:
-            for k in keys:
-                row = con.execute("SELECT rid FROM last_reports WHERE k=?", (k,)).fetchone()
-                if row and row[0]:
-                    return str(row[0])
-    except Exception:
-        pass
-    return ""
-
-
 @app.route("/report-preview")
 def report_preview():
     payload = get_demo_payload()
@@ -3726,28 +3623,6 @@ def report_preview():
     payload["report_id"] = rid
     html = _render_report_html(payload, report_id=rid, pdf_mode=False, is_paid=_is_paid(rid))
     return html
-
-
-
-
-@app.route("/checkout")
-def checkout():
-    """Redirect helper so paywall can always send the user somewhere deterministic.
-
-    It finds the last report for the caller for today (ip/uid) and redirects to /buy/<rid>.
-    If none exists, it redirects to landing with a short message.
-    """
-    try:
-        uid = (request.args.get("uid") or "").strip()
-        fwd = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-        ip = fwd or (request.headers.get("X-Real-IP") or "").strip() or (request.remote_addr or "").strip()
-        rid = _last_report_get(ip, uid)
-        if rid:
-            return redirect(url_for("buy_report", rid=rid))
-        # No stored report: user probably cleared storage before generating a report today.
-        return redirect(url_for("index"))
-    except Exception:
-        return redirect(url_for("index"))
 
 
 
@@ -4020,14 +3895,10 @@ def analyze():
         # Daily free quota (prevents 'switch browser to reset')
         ok_q, used_q, cap_q = _free_quota_allow(ip, uid)
         if not ok_q:
-            last_rid = _last_report_get(ip, uid)
-            buy_url = f"/checkout?uid={uid}"
             return jsonify({
                 "ok": False,
                 "error": f"Daily limit reached. You used {used_q}/{cap_q} free analyses today.",
-                "quota": {"used": used_q, "cap": cap_q},
-                "report_id": last_rid,
-                "buy_url": buy_url
+                "quota": {"used": used_q, "cap": cap_q}
             }), 429
 
         # Language hint (presentation only; computation is language-agnostic)
@@ -4234,7 +4105,6 @@ def analyze():
         }
         rid = _report_store_put(resp, uid=uid)
         resp["report_id"] = rid
-        _last_report_set(ip, uid, rid)
         resp["generated_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
         return jsonify(resp)
 
