@@ -724,7 +724,10 @@ async function startAnalysis() {
       rad: rad,
       water_managed: managed,
       lang: (currentLang === 'EN' ? 'en' : 'tr'),
-      units: (currentUnits === 'IMPERIAL' ? 'imperial' : 'metric'),
+      // IMPORTANT: analysis engine must be unit-invariant.
+      // Units are a presentation-only toggle; never alter core calculations.
+      // (This prevents Flight Window day-count from changing when switching units.)
+      units: 'metric',
       uid: getOrCreateUid()
     };
 

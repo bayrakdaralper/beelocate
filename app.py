@@ -2261,14 +2261,97 @@ def aspect_score_deg(deg):
 
 def get_elevation_full(roi):
     try:
+        # SRTM can be masked in some tiles; mean over a small ROI may return null.
+        # Use a robust fallback strategy:
+        # 1) mean over ROI (SRTM)
+        # 2) sample centroid (SRTM)
+        # 3) fallback DEM (NASADEM) if still null
+        def _stats_from_dem(dem_img):
+            terrain = ee.Terrain.products(dem_img)
+            stats1 = terrain.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=roi,
+                scale=30,
+                maxPixels=1e9,
+                bestEffort=True,
+            )
+            # Also compute elevation directly from DEM (terrain 'elevation' can be null even when DEM isn't)
+            elev1 = dem_img.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=roi,
+                scale=30,
+                maxPixels=1e9,
+                bestEffort=True,
+            ).get("elevation")
+
+            # Centroid sample fallback
+            c = ee.Geometry(roi).centroid(1)
+            s = terrain.sample(region=c, scale=30, numPixels=1, geometries=False).first()
+            elev_s = dem_img.sample(region=c, scale=30, numPixels=1, geometries=False).first()
+            return {
+                "stats": stats1,
+                "elev_mean": elev1,
+                "sample": s,
+                "elev_sample": elev_s,
+            }
+
+        def _to_float(x):
+            try:
+                if x is None:
+                    return None
+                return float(x)
+            except Exception:
+                return None
+
         dem = ee.Image("USGS/SRTMGL1_003")
-        terrain = ee.Terrain.products(dem)
+        pack = _stats_from_dem(dem)
 
-        stats = terrain.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).getInfo()
+        # GetInfo only once per value (avoid heavy dict assumptions)
+        stats = pack["stats"].getInfo() or {}
+        elev = _to_float(pack["elev_mean"].getInfo())
+        slope_deg = _to_float(stats.get("slope"))
+        aspect = _to_float(stats.get("aspect"))
 
-        elev = float(stats.get("elevation", 0) or 0)
-        slope_deg = float(stats.get("slope", 0) or 0)
-        aspect = float(stats.get("aspect", 0) or 0)
+        if elev is None or slope_deg is None or aspect is None:
+            try:
+                samp = pack["sample"].getInfo() if pack["sample"] else None
+                if samp and isinstance(samp, dict) and "properties" in samp:
+                    p = samp["properties"]
+                    elev = elev if elev is not None else _to_float(p.get("elevation"))
+                    slope_deg = slope_deg if slope_deg is not None else _to_float(p.get("slope"))
+                    aspect = aspect if aspect is not None else _to_float(p.get("aspect"))
+            except Exception:
+                pass
+
+        if elev is None:
+            try:
+                es = pack["elev_sample"].getInfo() if pack["elev_sample"] else None
+                if es and isinstance(es, dict) and "properties" in es:
+                    elev = _to_float(es["properties"].get("elevation"))
+            except Exception:
+                pass
+
+        # If still missing, fallback to NASADEM
+        if elev is None or slope_deg is None or aspect is None:
+            try:
+                dem2 = ee.Image("NASA/NASADEM_HGT/001")
+                pack2 = _stats_from_dem(dem2)
+                stats2 = pack2["stats"].getInfo() or {}
+                elev2 = _to_float(pack2["elev_mean"].getInfo())
+                slope2 = _to_float(stats2.get("slope"))
+                asp2 = _to_float(stats2.get("aspect"))
+                if elev is None:
+                    elev = elev2
+                if slope_deg is None:
+                    slope_deg = slope2
+                if aspect is None:
+                    aspect = asp2
+            except Exception as _e:
+                print(f"Topo DEM fallback failed: {_e}")
+
+        elev = float(elev or 0)
+        slope_deg = float(slope_deg or 0)
+        aspect = float(aspect or 0)
 
         slope_pct = math.tan(math.radians(slope_deg)) * 100.0
         slope_pct_i = int(round(slope_pct))
