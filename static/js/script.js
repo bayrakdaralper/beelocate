@@ -262,7 +262,6 @@ function showLoadingScreen() {
   if (barEl) barEl.style.width = `0%`;
 
   if (loadingTimer) clearInterval(loadingTimer);
-  let dotPhase = 0;
   loadingTimer = setInterval(() => {
     // climb quickly to 70, then creep to 90, then keep moving (90→99)
     // so users don't think the app froze during server-side processing.
@@ -272,7 +271,7 @@ function showLoadingScreen() {
 
     if (loadingPct < 70) loadingPct += 7;
     else if (loadingPct < 90) loadingPct += 1;
-    else if (loadingPct < 99) loadingPct += 0.8;
+    else if (loadingPct < 99) loadingPct += 0.3;
 
     loadingPct = clamp(loadingPct, 0, 99);
     const shown = Math.floor(loadingPct);
@@ -283,12 +282,10 @@ function showLoadingScreen() {
     const txt = $('loading-text');
     if (txt) {
       if (shown >= 90) {
-        dotPhase = (dotPhase + 1) % 4;
-        const dots = '.'.repeat(dotPhase);
-        txt.textContent = (currentLang === 'TR') ? `SON İŞLEMLER YAPILIYOR${dots}` : `FINALIZING RESULTS${dots}`;
+        txt.textContent = (currentLang === 'TR') ? 'SON İŞLEMLER YAPILIYOR...' : 'FINALIZING RESULTS...';
       }
     }
-  }, 90);
+  }, 120);
 }
 
 function hideLoadingScreen() {
@@ -674,24 +671,19 @@ function _setLastReportId(rid) {
   if (rid) localStorage.setItem('blp_last_report_id', rid);
 }
 
-function _showPaywall(opts = {}) {
-  const rid = (opts.reportId || _lastReportId() || '').trim();
-  const msg = opts.message || `Daily limit reached. You've used your ${FREE_DAILY_LIMIT} free analyses today.`;
-  const uid = (opts.uid || getOrCreateUid() || '').trim();
-  const cta = (opts.buyUrl || (uid ? `/checkout?uid=${encodeURIComponent(uid)}` : '/checkout')).trim();
-
-  // Minimal modal fallback: confirm + redirect.
-  // IMPORTANT: If we don't have a report id, we still redirect to /pricing to let user unlock.
+function _showPaywall() {
+  const rid = _lastReportId();
+  const msg = `Daily limit reached. You've used your ${FREE_DAILY_LIMIT} free analyses today.`;
+  const cta = rid ? `/buy/${rid}` : '/';
+  // Minimal modal fallback: use alert + redirect (keeps MVP stable)
   if (confirm(`${msg}\n\nUnlock full report + unlimited analyses for 24 hours — $9.90`)) {
     window.location.href = cta;
   }
 }
 
 async function startAnalysis() {
-  // If client thinks limit reached but we don't have a report id (storage cleared),
-  // let server decide and return the correct buy_url.
-  if (_limitReached() && _lastReportId()) {
-    _showPaywall({ uid: getOrCreateUid() });
+  if (_limitReached()) {
+    _showPaywall();
     return;
   }
   if (!Number.isFinite(selectedLat) || !Number.isFinite(selectedLng)) {
@@ -724,10 +716,7 @@ async function startAnalysis() {
       rad: rad,
       water_managed: managed,
       lang: (currentLang === 'EN' ? 'en' : 'tr'),
-      // IMPORTANT: analysis engine must be unit-invariant.
-      // Units are a presentation-only toggle; never alter core calculations.
-      // (This prevents Flight Window day-count from changing when switching units.)
-      units: 'metric',
+      units: (currentUnits === 'IMPERIAL' ? 'imperial' : 'metric'),
       uid: getOrCreateUid()
     };
 
@@ -740,33 +729,8 @@ async function startAnalysis() {
       body: JSON.stringify(payload)
     });
 
-    // Be defensive: proxies / error handlers sometimes return non-JSON bodies.
-    // Never let a JSON parse failure look like a mysterious "99% stuck" crash.
-    let data = null;
-    try {
-      const ct = (res.headers.get('content-type') || '').toLowerCase();
-      if (ct.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const txt = await res.text();
-        data = { ok: false, error: txt || `HTTP ${res.status}` };
-      }
-    } catch (parseErr) {
-      console.error('Analyze response parse error:', parseErr);
-      data = { ok: false, error: `HTTP ${res.status}` };
-    }
+    const data = await res.json();
     lastResult = data;
-
-    // Server-side quota enforcement (prevents cross-browser abuse).
-    if (res.status === 429) {
-      // Sync local counter to avoid repeated attempts feeling "buggy"
-      try {
-        const k = `blp_free_count_${_todayKey()}`;
-        localStorage.setItem(k, String(FREE_DAILY_LIMIT));
-      } catch (e) { /* ignore */ }
-      _showPaywall({ reportId: (data && data.report_id) || '', buyUrl: (data && data.buy_url) || '', message: (data && data.error) || undefined, uid: getOrCreateUid() });
-      return;
-    }
 
     if (!res.ok) throw new Error(data?.error || 'API error');
 
@@ -822,40 +786,9 @@ function renderResults(data) {
   // Elevation sometimes comes back as a plain number (not a {label,val} object).
   // Keep core metric as-is; wrap only for presentation so the card always shows a value.
   const elevRaw = (topo.elevation ?? d.elevation);
-  // Normalize elevation presentation:
-  // - Always show a sane placeholder if missing
-  // - Respect unit system for the numeric display
-  let elevMetric;
-  if (typeof elevRaw === 'number' && Number.isFinite(elevRaw)) {
-    // Use currentUnits (UNITS is not a global in this build)
-    if (currentUnits === 'IMPERIAL') {
-      const ft = elevRaw * 3.28084;
-      elevMetric = { _main: `${Math.round(ft)} ft`, _sub: 'NASA SRTM' };
-    } else {
-      elevMetric = { _main: `${Math.round(elevRaw)} m`, _sub: 'NASA SRTM' };
-    }
-  } else if (elevRaw && typeof elevRaw === 'object') {
-    // Backend topo.elevation can include both a human label ("Elevation") and a numeric val.
-    // Our card renderer prioritizes `label` over `val`, which can hide the number.
-    // Normalize to {_main,_sub} so the numeric elevation always shows.
-    const vRaw = (elevRaw.value ?? elevRaw.val ?? null);
-    const vNum = Number(vRaw);
-    if (Number.isFinite(vNum)) {
-      // Use currentUnits (UNITS is not a global in this build)
-      if (currentUnits === 'IMPERIAL') {
-        const ft = vNum * 3.28084;
-        elevMetric = { _main: `${Math.round(ft)} ft`, _sub: (elevRaw.desc || 'NASA SRTM') };
-      } else {
-        elevMetric = { _main: `${Math.round(vNum)} m`, _sub: (elevRaw.desc || 'NASA SRTM') };
-      }
-    } else if (typeof elevRaw._main === 'string') {
-      elevMetric = elevRaw;
-    } else {
-      elevMetric = { _main: '--', _sub: (currentLang === 'EN') ? 'Data unavailable' : 'Veri yok' };
-    }
-  } else {
-    elevMetric = { _main: '--', _sub: (currentLang === 'EN') ? 'Data unavailable' : 'Veri yok' };
-  }
+  const elevMetric = (typeof elevRaw === 'number' && Number.isFinite(elevRaw))
+    ? { _main: `${Math.round(elevRaw)}m`, _sub: 'NASA SRTM' }
+    : elevRaw;
 
   const cards = [
     { title: currentLang==='EN' ? 'Vegetation' : 'Vejetasyon', icon: 'forest', border: 'border-green-500', metric: d.flora },
@@ -885,24 +818,6 @@ function createCard(title, metric, icon, border) {
   const m = (metric && typeof metric === 'object') ? metric : {};
     let main = (m._main ?? m.label ?? m.val ?? '--');
   let sub = (m._sub ?? m.desc ?? '--');
-
-  // Presentation-only language cleanup for a few common mixed TR/EN fragments
-  // (we keep analysis logic untouched).
-  if (currentLang === 'EN') {
-    if (typeof main === 'string') {
-      main = main
-        .replace(/\bİyi\b/g, 'Good')
-        .replace(/\bÇok\s*iyi\b/g, 'Very Good')
-        .replace(/\bgün\/yıl\b/g, 'days/year');
-    }
-    if (typeof sub === 'string') {
-      sub = sub
-        .replace(/Uçuş\s*penceresi\s*:/gi, 'Flight window:')
-        .replace(/Uçuş\s*penceresi/gi, 'Flight window')
-        .replace(/gün\/yıl/gi, 'days/year')
-        .replace(/Ort\s*:/gi, 'Avg:');
-    }
-  }
 
   // Ensure Flight Suitability is not a duplicate of Flight Window
   const t = (title || '').toLowerCase();
@@ -948,10 +863,6 @@ function createCard(title, metric, icon, border) {
 
   // Unit conversion (presentation-only). Core values remain metric.
   if (currentUnits === 'IMPERIAL') {
-    // IMPORTANT: Do NOT convert day-count metrics (Flight Window / Flight Suitability)
-    // These are unitless counts and must remain identical across Metric/Imperial.
-    const _isDayCountCard = (t) => (t.includes('flight window') || t.includes('uçuş penceresi') || t.includes('flight suitability') || t.includes('uçuş uygunluğu'));
-
     const tt = (title || '').toLowerCase();
     const toNum = (s) => {
       const m = String(s).match(/-?\d+(?:\.\d+)?/);
@@ -969,8 +880,8 @@ function createCard(title, metric, icon, border) {
       }
     }
 
-    // Distances: km -> mi (only for true distance cards; never for day-count cards)
-    if (!_isDayCountCard(tt) && (tt.includes('road distance') || tt.includes('yol') || tt.includes('settlement') || tt.includes('yerleşim'))) {
+    // Distances: km -> mi
+    if (tt.includes('road distance') || tt.includes('yol') || tt.includes('settlement') || tt.includes('yerleşim')) {
       const v = toNum(main);
       if (Number.isFinite(v) && String(main).includes('km')) {
         const mi = v * 0.621371;
