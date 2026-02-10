@@ -2260,136 +2260,97 @@ def aspect_score_deg(deg):
 
 
 def get_elevation_full(roi):
+    """Return elevation stats for ROI.
+
+    IMPORTANT:
+      - Never coerce missing elevation to 0. A missing DEM sample is *unknown*, not sea level.
+      - Use point sampling first (most robust), then fall back to ROI mean.
+
+    Returns dict like:
+      {"val": <float meters> or None, "min":..., "max":..., "mean":..., "src": "SRTM"/"NASADEM"/...}
+    """
     try:
-        # SRTM can be masked in some tiles; mean over a small ROI may return null.
-        # Use a robust fallback strategy:
-        # 1) mean over ROI (SRTM)
-        # 2) sample centroid (SRTM)
-        # 3) fallback DEM (NASADEM) if still null
-        def _stats_from_dem(dem_img):
-            terrain = ee.Terrain.products(dem_img)
-            stats1 = terrain.reduceRegion(
-                reducer=ee.Reducer.mean(),
-                geometry=roi,
-                scale=30,
-                maxPixels=1e9,
-                bestEffort=True,
-            )
-            # Also compute elevation directly from DEM (terrain 'elevation' can be null even when DEM isn't)
-            elev1 = dem_img.reduceRegion(
-                reducer=ee.Reducer.mean(),
-                geometry=roi,
-                scale=30,
-                maxPixels=1e9,
-                bestEffort=True,
-            ).get("elevation")
+        # Prefer centroid sampling. ROI comes in as an ee.Geometry.
+        try:
+            pt = roi.centroid(1)
+        except Exception:
+            pt = roi
 
-            # Centroid sample fallback
-            c = ee.Geometry(roi).centroid(1)
-            s = terrain.sample(region=c, scale=30, numPixels=1, geometries=False).first()
-            elev_s = dem_img.sample(region=c, scale=30, numPixels=1, geometries=False).first()
-            return {
-                "stats": stats1,
-                "elev_mean": elev1,
-                "sample": s,
-                "elev_sample": elev_s,
-            }
-
-        def _to_float(x):
+        def _sample(img, band='elevation', scale=30):
             try:
-                if x is None:
+                # sample() is generally more reliable than reduceRegion over complex geoms.
+                fc = img.select([band]).sample(region=pt, scale=scale, numPixels=1, geometries=False)
+                f = fc.first()
+                if f is None:
                     return None
-                return float(x)
+                v = f.get(band)
+                if v is None:
+                    return None
+                # getInfo() at the very end to keep server-side work in EE.
+                vv = v.getInfo()
+                if vv is None:
+                    return None
+                return float(vv)
             except Exception:
                 return None
 
-        dem = ee.Image("USGS/SRTMGL1_003")
-        pack = _stats_from_dem(dem)
+        # Try a small ladder of DEMs (coverage + resilience)
+        candidates = [
+            (ee.Image('USGS/SRTMGL1_003'), 'SRTM', 30),
+            (ee.Image('NASA/NASADEM_HGT/001'), 'NASADEM', 30),
+            (ee.Image('CGIAR/SRTM90_V4'), 'SRTM90', 90),
+        ]
 
-        # GetInfo only once per value (avoid heavy dict assumptions)
-        stats = pack["stats"].getInfo() or {}
-        elev = _to_float(pack["elev_mean"].getInfo())
-        slope_deg = _to_float(stats.get("slope"))
-        aspect = _to_float(stats.get("aspect"))
+        elev = None
+        src = None
+        for img, name, sc in candidates:
+            elev = _sample(img, 'elevation', sc)
+            if elev is not None:
+                src = name
+                break
 
-        if elev is None or slope_deg is None or aspect is None:
-            try:
-                samp = pack["sample"].getInfo() if pack["sample"] else None
-                if samp and isinstance(samp, dict) and "properties" in samp:
-                    p = samp["properties"]
-                    elev = elev if elev is not None else _to_float(p.get("elevation"))
-                    slope_deg = slope_deg if slope_deg is not None else _to_float(p.get("slope"))
-                    aspect = aspect if aspect is not None else _to_float(p.get("aspect"))
-            except Exception:
-                pass
-
+        # If point sampling failed, attempt ROI mean as last resort.
+        mean = None
+        mn = None
+        mx = None
         if elev is None:
             try:
-                es = pack["elev_sample"].getInfo() if pack["elev_sample"] else None
-                if es and isinstance(es, dict) and "properties" in es:
-                    elev = _to_float(es["properties"].get("elevation"))
+                img = ee.Image('USGS/SRTMGL1_003').select('elevation')
+                stats = img.reduceRegion(
+                    reducer=ee.Reducer.mean().combine(ee.Reducer.min(), True).combine(ee.Reducer.max(), True),
+                    geometry=roi,
+                    scale=90,
+                    bestEffort=True,
+                    maxPixels=1e9,
+                )
+                # These keys can vary slightly; be defensive.
+                mean = stats.get('elevation_mean').getInfo() if stats.get('elevation_mean') is not None else None
+                mn = stats.get('elevation_min').getInfo() if stats.get('elevation_min') is not None else None
+                mx = stats.get('elevation_max').getInfo() if stats.get('elevation_max') is not None else None
+                if mean is not None:
+                    elev = float(mean)
+                    src = 'SRTM_mean'
             except Exception:
                 pass
 
-        # If still missing, fallback to NASADEM
-        if elev is None or slope_deg is None or aspect is None:
+        # Normalize outputs
+        def _f(x):
             try:
-                dem2 = ee.Image("NASA/NASADEM_HGT/001")
-                pack2 = _stats_from_dem(dem2)
-                stats2 = pack2["stats"].getInfo() or {}
-                elev2 = _to_float(pack2["elev_mean"].getInfo())
-                slope2 = _to_float(stats2.get("slope"))
-                asp2 = _to_float(stats2.get("aspect"))
-                if elev is None:
-                    elev = elev2
-                if slope_deg is None:
-                    slope_deg = slope2
-                if aspect is None:
-                    aspect = asp2
-            except Exception as _e:
-                print(f"Topo DEM fallback failed: {_e}")
+                return float(x) if x is not None else None
+            except Exception:
+                return None
 
-        elev = float(elev or 0)
-        slope_deg = float(slope_deg or 0)
-        aspect = float(aspect or 0)
-
-        slope_pct = math.tan(math.radians(slope_deg)) * 100.0
-        slope_pct_i = int(round(slope_pct))
-        elev_i = int(round(elev))
-        aspect_i = int(round(aspect))
-
-        return {
-            "elevation": {
-                "val": elev_i,
-                "score": elevation_score_m(elev_i),
-                "label": f"{elev_i}m",
-                "desc": "NASA SRTM",
-                "status": "Aktif",
-            },
-            "slope": {
-                "val": f"%{slope_pct_i}",
-                "value": slope_pct_i,
-                "score": slope_score_pct(slope_pct_i),
-                "label": "Eğim",
-                "desc": "Arazi Eğimi (SRTM, derece->%)",
-                "status": "Aktif",
-            },
-            "aspect": {
-                "val": aspect_i,
-                "score": aspect_score_deg(aspect_i),
-                "label": deg_to_cardinal(aspect_i),
-                "desc": f"{aspect_i}° (Bakı)",
-                "status": "Aktif",
-            },
+        out = {
+            'val': _f(elev),
+            'mean': _f(mean),
+            'min': _f(mn),
+            'max': _f(mx),
+            'src': src or 'unknown',
         }
-    except Exception as e:
-        print(f"Topo Error: {e}")
-        return {"elevation": {}, "slope": {}, "aspect": {}}
+        return out
+    except Exception:
+        return {'val': None, 'mean': None, 'min': None, 'max': None, 'src': 'error'}
 
-
-# ----------------------------
-# 6) Urbanization (VIIRS night lights)
-# ----------------------------
 def urban_score_from_viirs(val):
     if val is None:
         return None
