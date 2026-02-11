@@ -43,7 +43,11 @@ const UI_I18N = {
       12: 'DEC (Simulation)'
     },
     managed_water_on: 'Managed Water: ON',
-    managed_water_off: 'Managed Water: OFF'
+    managed_water_off: 'Managed Water: OFF',
+    report_btn_locked: 'GET PDF REPORT',
+    report_btn_unlocked: 'OPEN PDF REPORT',
+    share_btn: 'SHARE',
+    report_hint: 'Opens the report preview. If locked, you can unlock the full PDF + 24h unlimited analyses.'
   },
   TR: {
     search_ph: 'Konum ara... (örn. Sarıcakaya)',
@@ -70,9 +74,29 @@ const UI_I18N = {
       12: 'ARALIK (Simülasyon)'
     },
     managed_water_on: 'Yapay Su Desteği: AÇIK',
-    managed_water_off: 'Yapay Su Desteği: KAPALI'
+    managed_water_off: 'Yapay Su Desteği: KAPALI',
+    report_btn_locked: 'PDF RAPORU AL',
+    report_btn_unlocked: 'PDF RAPORU AÇ',
+    share_btn: 'PAYLAŞ',
+    report_hint: 'Rapor önizlemesini açar. Kilitliyse tam PDF + 24 saat sınırsız analiz için kilidi açabilirsin.'
   }
 };
+
+function updateReportCta() {
+  const t = UI_I18N[currentLang] || UI_I18N.EN;
+  const btnTxt = $('btn-report-text');
+  const btnIcon = $('btn-report-icon');
+  const shareTxt = $('btn-share-text');
+  const hint = $('btn-report-hint');
+
+  // We can’t reliably know “paid” from the analysis response alone.
+  // Best proxy: the local unlimited flag (set after successful payment) + report id presence.
+  const unlocked = _hasUnlimitedNow();
+  if (btnTxt) btnTxt.textContent = unlocked ? t.report_btn_unlocked : t.report_btn_locked;
+  if (btnIcon) btnIcon.textContent = unlocked ? 'download' : 'description';
+  if (shareTxt) shareTxt.textContent = t.share_btn;
+  if (hint) hint.textContent = t.report_hint;
+}
 
 function applyStaticI18n() {
   const t = UI_I18N[currentLang] || UI_I18N.EN;
@@ -116,6 +140,9 @@ function applyStaticI18n() {
   // Managed water label
   const mw = $('water-managed-label');
   if (mw) mw.textContent = waterManaged ? t.managed_water_on : t.managed_water_off;
+
+  // Report CTA (big button in results modal)
+  try { updateReportCta(); } catch (e) {}
 }
 
 function _getSavedLang() {
@@ -1092,6 +1119,9 @@ function updateUnlimitedBadge(){
     } catch (e) {}
     badge.style.display = 'none';
   }
+
+  // Keep the big Report button state in sync with the local "unlimited" flag.
+  try { updateReportCta(); } catch (e) {}
 }
 setInterval(updateUnlimitedBadge, 1000);
 document.addEventListener('DOMContentLoaded', updateUnlimitedBadge);

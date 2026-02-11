@@ -233,13 +233,21 @@
                             <div class="text-green-400 font-bold mt-1" id="score-comment">--</div>
                             <div class="text-xs text-gray-500 mt-2" id="main-coords">--</div>
                         </div>
-                        <div class="flex gap-2">
-                            <button onclick="downloadReport()"
-                                class="bg-white/10 hover:bg-white/20 text-white p-3 rounded-xl transition"><span
-                                    class="material-symbols-outlined">download</span></button>
-                            <button onclick="shareResult()"
-                                class="bg-white/10 hover:bg-white/20 text-white p-3 rounded-xl transition"><span
-                                    class="material-symbols-outlined">share</span></button>
+                        <div class="flex flex-col items-end gap-2">
+                            <!-- Primary CTA: make it obvious this is the report/paywall entry point (NOT a tiny icon) -->
+                            <button id="btn-report" onclick="downloadReport()"
+                                class="flex items-center gap-2 bg-primary hover:bg-primary-hover text-[#181610] px-4 py-3 rounded-xl transition font-extrabold shadow-lg active:scale-95">
+                                <span id="btn-report-icon" class="material-symbols-outlined" style="font-size:22px;">description</span>
+                                <span id="btn-report-text" class="text-sm whitespace-nowrap">GET PDF REPORT</span>
+                            </button>
+                            <button id="btn-share" onclick="shareResult()"
+                                class="bg-white/10 hover:bg-white/20 text-white px-4 py-3 rounded-xl transition flex items-center gap-2 active:scale-95">
+                                <span class="material-symbols-outlined" style="font-size:20px;">share</span>
+                                <span id="btn-share-text" class="text-sm font-bold">SHARE</span>
+                            </button>
+                            <div id="btn-report-hint" class="text-[11px] text-gray-400 text-right leading-tight max-w-[240px]">
+                                Opens the report preview. If locked, you can unlock the full PDF + 24h unlimited analyses.
+                            </div>
                         </div>
                     </div>
                     <div class="flex-1 bg-white/5 p-6 rounded-2xl border border-white/5 flex items-center">
