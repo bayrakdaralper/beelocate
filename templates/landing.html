@@ -3,79 +3,331 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BeeLocate PRO | Location Suitability</title>
+  <title>BeeLocate PRO | Beekeeping Location Intelligence</title>
+
+  <!-- Tailwind (CDN) + project theme tokens -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="{{ url_for('static', filename='js/tailwind-config.js') }}"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
 
-  gtag('config', 'G-RB3NKEXE1Y');
-</script>
+  <!-- Icons & fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-RB3NKEXE1Y');
+  </script>
+
+  <style>
+    /* Subtle grid background (no extra assets, no JS) */
+    .grid-bg{
+      background-size: 40px 40px;
+      background-image:
+        linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+    }
+  </style>
 </head>
 <body class="bg-bg-dark text-white font-display">
   <div class="min-h-screen flex flex-col">
+
+    <!-- Top bar -->
     <header class="px-6 py-6 flex items-center justify-between">
-      <a href="/landing" class="flex items-center gap-2 bg-black/60 px-4 py-2 rounded-full border border-white/10 backdrop-blur hover:bg-black/80 transition">
+      <a href="/" class="flex items-center gap-2 bg-black/60 px-4 py-2 rounded-full border border-white/10 backdrop-blur hover:bg-black/80 transition">
         <span class="material-symbols-outlined text-primary" style="font-size:28px">hive</span>
         <div class="text-lg font-bold">BeeLocate <span class="text-primary">PRO</span></div>
       </a>
-      <a href="/" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-black font-bold hover:bg-primary-hover transition">
-        Open App
+      <a href="/app" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-black font-bold hover:bg-primary-hover transition">
+        Start Free Analysis
         <span class="material-symbols-outlined" style="font-size:18px">arrow_forward</span>
       </a>
     </header>
 
-    <main class="flex-1 px-6">
-      <div class="max-w-4xl mx-auto pt-10 pb-16">
-        <h1 class="text-4xl md:text-5xl font-black tracking-tight leading-tight">
-          Research-based location suitability for beekeeping.
-        </h1>
-        <p class="mt-5 text-lg text-white/70 max-w-2xl">
-          Select a point on the map, run an analysis, and get a clear, contextual score you can actually interpret.
-        </p>
+    <main class="flex-1">
+      <!-- HERO -->
+      <section class="grid-bg relative px-6">
+        <div class="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-transparent to-bg-dark"></div>
 
-        <div class="mt-8 flex flex-col sm:flex-row gap-3">
-          <a href="/" class="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-black font-extrabold hover:bg-primary-hover transition">
-            Start analysis
-            <span class="material-symbols-outlined" style="font-size:20px">analytics</span>
-          </a>
-          <a href="#trust" class="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-bold hover:bg-white/15 transition border border-white/10">
-            About & trust
-            <span class="material-symbols-outlined" style="font-size:20px">verified</span>
-          </a>
+        <div class="max-w-6xl mx-auto pt-10 pb-16">
+          <div class="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+
+            <!-- Left copy -->
+            <div>
+              <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-extrabold tracking-wide">
+                <span class="w-2 h-2 rounded-full bg-primary" style="box-shadow:0 0 14px rgba(232,162,23,0.55)"></span>
+                Location Intelligence for Beekeeping
+              </div>
+
+              <h1 class="mt-5 text-4xl md:text-5xl font-black tracking-tight leading-tight">
+                Choose your hive location with <span class="text-primary">data</span> — not guesswork.
+              </h1>
+
+              <p class="mt-5 text-lg text-white/70 max-w-xl">
+                Analyze any land before moving your bees. Satellite-based suitability scoring with clear seasonal interpretation.
+              </p>
+
+              <div class="mt-8 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <a href="/app" class="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-black font-extrabold hover:bg-primary-hover transition">
+                  Start Free Analysis
+                  <span class="material-symbols-outlined" style="font-size:20px">analytics</span>
+                </a>
+                <div class="text-sm text-white/60">
+                  <span class="material-symbols-outlined align-text-bottom text-primary" style="font-size:18px">check_circle</span>
+                  5 free analyses daily. No credit card required.
+                </div>
+              </div>
+
+              <div class="mt-10 grid sm:grid-cols-3 gap-4">
+                <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
+                  <div class="text-xs font-extrabold text-white/70 uppercase tracking-wider">Clear score</div>
+                  <div class="mt-2 text-white/80 text-sm">A single suitability score designed for decisions—not dashboards.</div>
+                </div>
+                <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
+                  <div class="text-xs font-extrabold text-white/70 uppercase tracking-wider">Season insight</div>
+                  <div class="mt-2 text-white/80 text-sm">Understand when a site is likely to perform better or worse across the year.</div>
+                </div>
+                <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
+                  <div class="text-xs font-extrabold text-white/70 uppercase tracking-wider">Decision support</div>
+                  <div class="mt-2 text-white/80 text-sm">Reduces uncertainty. Does not promise guarantees.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: UI mockup -->
+            <div class="relative">
+              <div class="absolute -inset-6 bg-primary/10 blur-3xl rounded-full"></div>
+
+              <div class="relative rounded-2xl bg-white/5 border border-white/10 overflow-hidden shadow-2xl">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-black/30">
+                  <div class="flex items-center gap-2 text-xs text-white/60 font-mono">
+                    <span class="material-symbols-outlined" style="font-size:16px">my_location</span>
+                    39.90°N, 32.86°E
+                  </div>
+                  <div class="flex gap-1.5">
+                    <div class="w-2.5 h-2.5 rounded-full bg-red-500/25 border border-red-500/60"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-yellow-500/25 border border-yellow-500/60"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-green-500/25 border border-green-500/60"></div>
+                  </div>
+                </div>
+
+                <div class="h-56 bg-black/30 relative">
+                  <div class="absolute inset-0 opacity-40" style="background-image: radial-gradient(rgba(148,163,184,0.55) 1px, transparent 1px); background-size: 22px 22px;"></div>
+                  <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 bg-emerald-500/25 blur-2xl rounded-full"></div>
+                  <div class="absolute top-1/3 left-2/3 w-28 h-28 bg-primary/20 blur-xl rounded-full"></div>
+
+                  <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+                    <div class="w-4 h-4 bg-primary rounded-full border-2 border-white shadow-[0_0_15px_rgba(232,162,23,0.8)]"></div>
+                    <div class="w-1 h-10 bg-gradient-to-b from-white/80 to-transparent"></div>
+                  </div>
+
+                  <div class="absolute top-4 left-4 bg-black/70 backdrop-blur border border-white/10 rounded-lg p-2 space-y-2 w-36">
+                    <div class="flex items-center justify-between text-[11px] text-white/80">
+                      <span>Forage</span><span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-white/80">
+                      <span>Slope</span><span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-white/80">
+                      <span>Access</span><span class="w-2 h-2 rounded-full bg-primary"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="p-6">
+                  <div class="flex items-end justify-between">
+                    <div>
+                      <div class="text-xs font-extrabold text-white/60 uppercase tracking-wider">Suitability score</div>
+                      <div class="mt-2 text-4xl font-black">78<span class="text-lg font-bold text-white/40">/100</span></div>
+                    </div>
+                    <div class="text-right">
+                      <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 text-xs font-extrabold border border-emerald-500/20">
+                        <span class="material-symbols-outlined" style="font-size:16px">verified</span>
+                        High potential
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="mt-4 space-y-3">
+                    <div>
+                      <div class="flex justify-between text-xs text-white/60">
+                        <span>Vegetation signal (NDVI)</span><span>82%</span>
+                      </div>
+                      <div class="h-2 w-full bg-white/10 rounded-full overflow-hidden mt-1">
+                        <div class="h-full bg-primary" style="width:82%"></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="flex justify-between text-xs text-white/60">
+                        <span>Water proximity</span><span>45%</span>
+                      </div>
+                      <div class="h-2 w-full bg-white/10 rounded-full overflow-hidden mt-1">
+                        <div class="h-full bg-white/40" style="width:45%"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p class="mt-4 text-sm text-white/60">
+                    This is structured decision support, not a guarantee.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </div>
         </div>
+      </section>
 
-        <div class="mt-10 grid md:grid-cols-3 gap-4">
-          <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
-            <div class="text-sm font-bold text-white/70">Contextual score</div>
-            <div class="mt-2 text-white/80 text-sm">Every score includes a regional anchor (e.g., top band vs. local average), so “is 78 good?” is answered inside the report.</div>
-          </div>
-          <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
-            <div class="text-sm font-bold text-white/70">Recommended season</div>
-            <div class="mt-2 text-white/80 text-sm">By default, the analysis uses a phenology-driven recommended season derived from multi-year NDVI behaviour.</div>
-          </div>
-          <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
-            <div class="text-sm font-bold text-white/70">Decision support</div>
-            <div class="mt-2 text-white/80 text-sm">This is an assessment tool, not a guarantee. It helps you compare options, not predict the future.</div>
+      <!-- PROBLEM -->
+      <section class="px-6 py-16 border-t border-white/10 bg-bg-dark">
+        <div class="max-w-5xl mx-auto">
+          <h2 class="text-2xl md:text-3xl font-black tracking-tight">
+            Most beekeeping problems start with <span class="text-primary">location</span>.
+          </h2>
+          <p class="mt-4 text-white/70 text-lg max-w-3xl">
+            Poor forage timing. Water too far. Excess disturbance. Wrong seasonal conditions.
+            Once the hive is placed, your options shrink. Better decisions start before placement.
+          </p>
+
+          <div class="mt-10 grid md:grid-cols-3 gap-4">
+            <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
+              <div class="text-primary flex items-center gap-2 font-extrabold">
+                <span class="material-symbols-outlined">trending_down</span>
+                Resource scarcity
+              </div>
+              <p class="mt-2 text-sm text-white/70">Seasonal dearths are easy to miss on a single visit. Signals over time reveal the pattern.</p>
+            </div>
+            <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
+              <div class="text-primary flex items-center gap-2 font-extrabold">
+                <span class="material-symbols-outlined">terrain</span>
+                Terrain risk
+              </div>
+              <p class="mt-2 text-sm text-white/70">Slope, exposure, and accessibility add cost and risk—especially when moving equipment.</p>
+            </div>
+            <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
+              <div class="text-primary flex items-center gap-2 font-extrabold">
+                <span class="material-symbols-outlined">location_city</span>
+                Human pressure
+              </div>
+              <p class="mt-2 text-sm text-white/70">Proximity to roads and settlements can influence disturbance and management constraints.</p>
+            </div>
           </div>
         </div>
+      </section>
 
-        <section id="trust" class="mt-14 p-6 rounded-2xl bg-white/5 border border-white/10">
-          <h2 class="text-xl font-extrabold">About & trust</h2>
-          <p class="mt-3 text-white/70 text-sm leading-relaxed">
-            BeeLocate PRO is built by a GIS + design team with academic research experience. The system combines satellite vegetation signals (NDVI), climate summaries, terrain, and other spatial indicators to provide a structured, repeatable assessment.
+      <!-- SOLUTION + HOW IT WORKS -->
+      <section class="px-6 py-16 border-t border-white/10">
+        <div class="max-w-5xl mx-auto grid lg:grid-cols-2 gap-10">
+          <div>
+            <h2 class="text-2xl md:text-3xl font-black tracking-tight">BeeLocate PRO evaluates land suitability instantly.</h2>
+            <p class="mt-4 text-white/70 text-lg">
+              Select a point. We analyze it using satellite vegetation signals, seasonal climate patterns, terrain, and human impact constraints.
+              You receive a clear score and seasonal interpretation.
+            </p>
+            <div class="mt-6 text-white/60">
+              <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">check</span>No installations</div>
+              <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">check</span>No field equipment</div>
+              <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">check</span>No complex dashboards</div>
+            </div>
+          </div>
+          <div class="p-6 rounded-2xl bg-white/5 border border-white/10">
+            <h3 class="text-xl font-extrabold">How it works</h3>
+            <div class="mt-5 space-y-4">
+              <div class="flex gap-3">
+                <div class="w-8 h-8 rounded-full bg-primary text-black font-black flex items-center justify-center">1</div>
+                <div>
+                  <div class="font-extrabold">Pick a location on the map</div>
+                  <div class="text-sm text-white/70">Search or click anywhere. Adjust scan radius if needed.</div>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <div class="w-8 h-8 rounded-full bg-primary text-black font-black flex items-center justify-center">2</div>
+                <div>
+                  <div class="font-extrabold">Run analysis</div>
+                  <div class="text-sm text-white/70">Get the score + season insight instantly (5/day free).</div>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <div class="w-8 h-8 rounded-full bg-primary text-black font-black flex items-center justify-center">3</div>
+                <div>
+                  <div class="font-extrabold">Unlock report when needed</div>
+                  <div class="text-sm text-white/70">$9.90 unlocks the full PDF + unlimited analyses for the rest of the day.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRICING -->
+      <section class="px-6 py-16 border-t border-white/10">
+        <div class="max-w-4xl mx-auto">
+          <h2 class="text-2xl md:text-3xl font-black tracking-tight">One clear offer.</h2>
+          <div class="mt-6 p-6 rounded-2xl bg-white/5 border border-white/10">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div class="text-sm font-extrabold text-white/60 uppercase tracking-wider">Single Report Unlock</div>
+                <div class="mt-1 text-3xl font-black">$9.90</div>
+              </div>
+              <a href="/app" class="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-black font-extrabold hover:bg-primary-hover transition">
+                Start Free Analysis
+                <span class="material-symbols-outlined" style="font-size:20px">arrow_forward</span>
+              </a>
+            </div>
+            <div class="mt-5 grid md:grid-cols-2 gap-4">
+              <div class="p-4 rounded-xl bg-black/30 border border-white/10">
+                <div class="font-extrabold">Includes</div>
+                <ul class="mt-2 text-sm text-white/70 space-y-1">
+                  <li>• Full PDF report for the selected location</li>
+                  <li>• Unlimited analyses for the rest of the day</li>
+                </ul>
+              </div>
+              <div class="p-4 rounded-xl bg-black/30 border border-white/10">
+                <div class="font-extrabold">Daily reset</div>
+                <p class="mt-2 text-sm text-white/70">
+                  The system resets each day. You get 5 new free analyses tomorrow.
+                </p>
+              </div>
+            </div>
+            <p class="mt-4 text-xs text-white/50">
+              No subscriptions. No tiers. No recurring charges.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TRUST -->
+      <section class="px-6 py-16 border-t border-white/10">
+        <div class="max-w-4xl mx-auto">
+          <h2 class="text-2xl md:text-3xl font-black tracking-tight">Built on real observations.</h2>
+          <p class="mt-4 text-white/70 text-lg">
+            BeeLocate PRO is built on real satellite observations, structured spatial evaluation models, and field-aligned beekeeping criteria.
           </p>
-          <p class="mt-3 text-white/60 text-xs leading-relaxed">
-            Methodology note: NDVI is a vegetation density indicator (not plant species). Climate metrics are long-term reanalysis summaries. BeeLocate PRO is a decision-support tool and does not guarantee outcomes.
+          <p class="mt-3 text-white/60">
+            BeeLocate PRO reduces uncertainty. It does not promise guarantees.
           </p>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      <!-- FINAL CTA -->
+      <section class="px-6 pb-20 border-t border-white/10">
+        <div class="max-w-4xl mx-auto pt-12">
+          <div class="p-8 rounded-2xl bg-white/5 border border-white/10">
+            <h2 class="text-2xl md:text-3xl font-black tracking-tight">Before moving your hive, test the land.</h2>
+            <p class="mt-3 text-white/70">Start with 5 free analyses today.</p>
+            <div class="mt-6">
+              <a href="/app" class="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-black font-extrabold hover:bg-primary-hover transition">
+                Start Free Analysis
+                <span class="material-symbols-outlined" style="font-size:20px">analytics</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <footer class="px-6 py-6 text-xs text-white/40">

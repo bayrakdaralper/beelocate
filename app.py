@@ -3431,13 +3431,21 @@ def health_gee():
     return jsonify({'ok': ok, 'error': err}), (200 if ok else 503)
 
 @app.route("/")
+def landing_page():
+    """Marketing landing page (isolated from the app flow)."""
+    return render_template("landing.html")
+
+
+@app.route("/app")
 def index():
-    return render_template("index.html", mapbox_token=os.environ.get("MAPBOX_TOKEN",""))
+    """Main application (map + analysis)."""
+    return render_template("index.html", mapbox_token=os.environ.get("MAPBOX_TOKEN", ""))
 
 
 @app.route("/landing")
 def landing():
-    return render_template("landing.html")
+    """Backward-compatible alias."""
+    return redirect(url_for("landing_page"))
 
 
 @app.route("/my")
