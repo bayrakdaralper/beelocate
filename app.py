@@ -3794,7 +3794,9 @@ def buy_report(rid: str):
                 },
                 "checkout_options": {
                     "embed": False,
-                    "discount": False,
+                    # Allow customers to enter discount / promo codes on Lemon hosted checkout.
+                    # Without this, the "Discount code" field is hidden even if coupons exist.
+                    "discount": True,
                 },
                 "checkout_data": {
                     "custom": {
