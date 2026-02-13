@@ -3130,6 +3130,84 @@ def build_report_context(payload: dict) -> dict:
         sval = str(val).strip()
         return sval if sval else fallback
 
+    # --- Presentation-layer formatting (do NOT affect analysis logic) ---
+    # Some upstream components historically emitted LaTeX-like strings
+    # (e.g., "$3.0^{\\circ}C$" or "$\\le8~m/s$"). Those must be rendered
+    # as clean, human strings in the report.
+    import re
+
+    def _to_float(x):
+        try:
+            if x is None:
+                return None
+            if isinstance(x, (int, float)):
+                return float(x)
+            s = str(x).strip().replace(",", ".")
+            # Keep first numeric token
+            m = re.search(r"[-+]?\d*\.?\d+", s)
+            return float(m.group(0)) if m else None
+        except Exception:
+            return None
+
+    def _clean_latex(s: str) -> str:
+        if not s:
+            return ""
+        t = str(s)
+        # strip $...$
+        t = t.replace("$", "")
+        # common LaTeX tokens
+        t = t.replace("\\le", "≤")
+        t = t.replace("\\ge", "≥")
+        t = t.replace("~", " ")
+        # degrees
+        t = t.replace("^{\\circ}", "°")
+        t = t.replace("^{\circ}", "°")
+        # remove curly braces left over
+        t = t.replace("{", "").replace("}", "")
+        # tighten spaces like "≤8" -> "≤ 8"
+        t = re.sub(r"(≤|≥)\s*(\d)", r"\1 \2", t)
+        t = re.sub(r"\s+", " ", t).strip()
+        return t
+
+    def _format_temp(raw) -> str:
+        # Prefer numeric if possible
+        v = _to_float(raw)
+        if v is not None:
+            return f"{v:.1f}°C"
+        t = _clean_latex(str(raw))
+        # If it already contains °C or C, keep as is after cleaning
+        if "°" in t and "C" in t:
+            return t.replace(" °", "°")
+        if t.endswith("C") and "°" not in t:
+            return t.replace(" C", "C")
+        return t
+
+    def _format_wind(raw) -> str:
+        # Handle threshold forms first
+        if raw is None:
+            return "--"
+        s = _clean_latex(str(raw))
+        # normalize <=
+        s = s.replace("<=", "≤")
+        # If includes m/s, keep; else if numeric, append
+        if "m/s" in s:
+            return s
+        v = _to_float(s)
+        if v is not None:
+            # Keep leading comparator if present
+            if s.startswith("≤"):
+                return f"≤ {v:.1f} m/s"
+            if s.startswith("≥"):
+                return f"≥ {v:.1f} m/s"
+            return f"{v:.1f} m/s"
+        return s
+
+    def _format_mm(raw) -> str:
+        v = _to_float(raw)
+        if v is None:
+            return _clean_latex(str(raw)) if raw is not None else "--"
+        return f"{v:.2f}"
+
 
     def _card(title, value, unit="", source="", why="", how_used="", extra=None):
         c = {
@@ -3179,9 +3257,14 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 3) Wind
+    _wind_raw = wind.get("label") if isinstance(wind, dict) else None
+    if _wind_raw is not None:
+        _wind_raw = str(_wind_raw).strip()
+    if (not _wind_raw) or (_wind_raw == "--"):
+        _wind_raw = wind.get("val") if isinstance(wind, dict) else _wind_raw
     cards.append(_card(
         "Wind",
-        _disp(wind),
+        _format_wind(_wind_raw if _wind_raw is not None else _disp(wind)),
         "",
         "ERA5-Land / operational weather",
         "Persistent strong winds reduce flight activity and increase stress.",
@@ -3274,7 +3357,7 @@ def build_report_context(payload: dict) -> dict:
     # 12) Precip
     cards.append(_card(
         "Precipitation (period)",
-        precip.get("val", "--"),
+        _format_mm(precip.get("val", "--")),
         "mm",
         "CHIRPS (monthly)",
         "Rain supports forage growth, but excessive precipitation can disrupt flight and nectar flow.",
@@ -3292,9 +3375,14 @@ def build_report_context(payload: dict) -> dict:
     ))
 
     # 14) Temperature
+    _temp_raw = temp.get("label") if isinstance(temp, dict) else None
+    if _temp_raw is not None:
+        _temp_raw = str(_temp_raw).strip()
+    if (not _temp_raw) or (_temp_raw == "--"):
+        _temp_raw = temp.get("val") if isinstance(temp, dict) else _temp_raw
     cards.append(_card(
         "Temperature",
-        _disp(temp),
+        _format_temp(_temp_raw if _temp_raw is not None else _disp(temp)),
         "",
         "Open-Meteo (baseline: ERA5)",
         "Temperature controls key thresholds for flight and colony development.",
