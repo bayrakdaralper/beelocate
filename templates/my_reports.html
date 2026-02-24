@@ -7,25 +7,22 @@
   <title>My Reports - BeeLocate PRO</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700&display=swap"
-    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700&display=swap" rel="stylesheet" />
   <script src="{{ url_for('static', filename='js/tailwind-config.js') }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
     /* keep it readable on white cards */
-    .card {
-      background: rgba(255, 255, 255, 0.06);
-    }
+    .card { background: rgba(255,255,255,0.06); }
   </style>
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() { dataLayer.push(arguments); }
-    gtag('js', new Date());
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RB3NKEXE1Y"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
 
-    gtag('config', 'G-RB3NKEXE1Y');
-  </script>
+  gtag('config', 'G-RB3NKEXE1Y');
+</script>
 </head>
 
 <body class="bg-bg-dark text-white font-display min-h-screen">
@@ -43,13 +40,10 @@
         <div>
           <h1 class="text-2xl font-bold">My Reports</h1>
           <p class="text-sm text-white/70 mt-1">
-            This list is tied to your current browser/device (MVP). For now, it’s the fastest way to re-open and
-            re-download your paid reports.
+            This list is tied to your current browser/device (MVP). For now, it’s the fastest way to re-open and re-download your paid reports.
           </p>
         </div>
-        <button id="btn-refresh"
-          class="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-sm">{{
-          t('my_reports.refresh') }}</button>
+        <button id="btn-refresh" class="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-sm">Refresh</button>
       </div>
 
       <div id="status" class="text-sm text-white/70 mt-4">Loading...</div>
@@ -101,7 +95,7 @@
               <div class="text-xs text-white/70 mt-1">${coords}</div>
               <div class="text-xs text-white/50 mt-1">${fmtDate(item.created_at)}</div>
             </div>
-            <div class="text-xs text-white/40">${item.rid.slice(0, 8)}</div>
+            <div class="text-xs text-white/40">${item.rid.slice(0,8)}</div>
           </div>
 
           <div class="mt-4 flex flex-wrap gap-2">
@@ -138,7 +132,7 @@
           return;
         }
         list.innerHTML = items.map(card).join('');
-      } catch (e) {
+      } catch(e) {
         console.error(e);
         status.textContent = 'Failed to load reports.';
       }
@@ -148,5 +142,4 @@
     load();
   </script>
 </body>
-
 </html>

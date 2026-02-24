@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
-    <title>{{ t('index.title') }}</title>
+    <title>BeeLocate PRO v3.9</title>
     <script>window.MAPBOX_TOKEN = "{{ mapbox_token|default('') }}";</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
@@ -44,45 +44,45 @@
             <div class="flex flex-wrap justify-end items-center gap-2 max-w-full">
                 <a href="/my"
                     class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-white/10 hover:border-white/20 transition text-gray-300 group"
-                    data-tippy-content="{{ t('index.tooltip_my_reports') }}">
+                    data-tippy-content="My reports">
                     <span class="material-symbols-outlined text-xl group-active:scale-90 transition">history</span>
                 </a>
                 <a href="mailto:info@beelocatepro.com?subject=BeeLocate%20PRO%20-%20Contact"
                     class="bg-black/60 backdrop-blur-md rounded-full w-9 h-9 flex items-center justify-center border border-white/10 shadow-lg hover:bg-primary hover:text-black hover:border-primary transition text-gray-300 group"
-                    data-tippy-content="{{ t('index.tooltip_contact') }}">
+                    data-tippy-content="Contact">
                     <span class="material-symbols-outlined text-xl group-active:scale-90 transition">mail</span>
                 </a>
 
                 <div id="lang-toggle"
                     class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-9 items-center">
-                    <a href="/set-lang?lang=tr" id="btn-tr"
-                        class="px-3 py-1 rounded-full text-xs font-bold transition {% if current_lang == 'tr' %}bg-primary text-black{% else %}text-gray-400 hover:text-white{% endif %}">TR</a>
-                    <a href="/set-lang?lang=en" id="btn-en"
-                        class="px-3 py-1 rounded-full text-xs font-bold transition {% if current_lang == 'en' %}bg-primary text-black{% else %}text-gray-400 hover:text-white{% endif %}">EN</a>
+                    <button onclick="setLang('TR')" id="btn-tr"
+                        class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">TR</button>
+                    <button onclick="setLang('EN')" id="btn-en"
+                        class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">EN</button>
                 </div>
 
                 <div id="units-toggle"
                     class="bg-black/60 backdrop-blur-md rounded-full px-1 py-1 border border-white/10 flex shadow-lg h-9 items-center">
                     <button onclick="setUnits('METRIC')" id="btn-metric"
-                        class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">{{ t('index.metric') }}</button>
+                        class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-black transition">Metric</button>
                     <button onclick="setUnits('IMPERIAL')" id="btn-imperial"
-                        class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">{{ t('index.imperial') }}</button>
+                        class="px-3 py-1 rounded-full text-xs font-bold text-gray-400 transition hover:text-white">Imperial</button>
                 </div>
                 <div class="bg-black/60 backdrop-blur-md rounded-full px-2 py-1 border border-white/10 flex shadow-lg h-9 items-center">
                     <span class="material-symbols-outlined text-white/70 mr-1" style="font-size:18px;">layers</span>
                     <select id="basemap-selector" onchange="setBasemap(this.value)"
                         class="bg-transparent text-xs font-semibold text-white/80 outline-none">
-                        <option value="mapbox_sat_labels">{{ t('index.basemap_sat_labels') }}</option>
-                        <option value="mapbox_sat">{{ t('index.basemap_sat') }}</option>
-                        <option value="mapbox_streets">{{ t('index.basemap_map') }}</option>
-                        <option value="osm">{{ t('index.basemap_osm') }}</option>
+                        <option value="mapbox_sat_labels">Satellite + Labels (Mapbox)</option>
+                        <option value="mapbox_sat">Satellite (Mapbox)</option>
+                        <option value="mapbox_streets">Map (Mapbox)</option>
+                        <option value="osm">Map (OSM fallback)</option>
                     </select>
                 </div>
 
                 <div class="bg-black/60 backdrop-blur-md rounded-full px-3 py-1 border border-white/10 flex shadow-lg h-9 items-center ml-2">
                     <span class="material-symbols-outlined text-white/70 mr-1" style="font-size:18px;">label</span>
                     <label class="text-xs font-semibold text-white/80 select-none flex items-center gap-2">
-                        <span class="hidden sm:inline">{{ t('index.labels') }}</span>
+                        <span class="hidden sm:inline">Labels</span>
                         <input id="labels-toggle" type="checkbox" checked onchange="setLabels(this.checked)"
                             class="accent-yellow-400 w-4 h-4">
                     </label>
@@ -104,11 +104,11 @@
                 <span class="material-symbols-outlined text-gray-400 text-lg">search</span>
                 <input id="search-input"
                     class="bg-transparent border-none text-white text-sm w-full ml-2 focus:outline-none placeholder-gray-500"
-                    placeholder="{{ t('index.search_placeholder') }}" onkeypress="handleSearch(event)">
+                    placeholder="Search location... (e.g., Sarıcakaya)" onkeypress="handleSearch(event)">
             </div>
             <div>
                 <div class="flex justify-between text-[10px] text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span id="lbl-rad">{{ t('index.scan_radius') }}</span>
+                    <span id="lbl-rad">Scan radius (buffer)</span>
                     <span class="text-primary" id="rad-val">2000m</span>
                 </div>
                 <input type="range" id="radius-slider" min="1000" max="5000" step="500" value="2000"
@@ -122,7 +122,7 @@
             class="flex items-center justify-center gap-3 h-14 w-full bg-primary hover:bg-primary-hover text-[#181610] rounded-2xl shadow-xl transform transition active:scale-95 animate-fade-in-up font-bold text-lg"
             style="animation-delay: 0.1s;">
             <span class="material-symbols-outlined text-2xl">query_stats</span>
-            <span id="btn-analyze-text">{{ t('index.run_analysis') }}</span>
+            <span id="btn-analyze-text">RUN ANALYSIS</span>
         </button>
     </div>
 
@@ -137,7 +137,7 @@
 
         <div class="space-y-1 text-center">
             <div id="loading-text" class="text-green-400 text-xs font-bold uppercase tracking-widest animate-pulse">
-                {{ t('index.initializing_system') }}
+                INITIALIZING SYSTEM...
             </div>
             <div class="text-[10px] text-green-700/60" id="loading-sub">
                 BeeLocate Terminal v4.2
@@ -160,7 +160,7 @@
                         <span class="material-symbols-outlined text-primary">analytics</span>
                     </div>
                     <div>
-                        <div class="text-xs text-gray-400 font-bold uppercase tracking-wider">{{ t('index.overall_score') }}</div>
+                        <div class="text-xs text-gray-400 font-bold uppercase tracking-wider">OVERALL SCORE</div>
                         <div class="flex items-end gap-2">
                             <span class="text-2xl font-bold text-white leading-none" id="mini-score-val">--</span>
                             <span class="text-sm font-medium text-gray-400 mb-0.5" id="mini-score-comment">--</span>
@@ -176,38 +176,38 @@
                         class="hidden md:block text-[10px] uppercase font-bold text-primary tracking-wider mr-2 animate-pulse">
                         <!-- JS Injected Title -->
                     </div>
-                    <label id="lbl-analysis-period" class="text-[10px] uppercase font-bold text-gray-500 tracking-wider whitespace-nowrap">{{ t('index.analysis_period') }}</label>
+                    <label id="lbl-analysis-period" class="text-[10px] uppercase font-bold text-gray-500 tracking-wider whitespace-nowrap">Analysis period:</label>
                     <select id="month-selector" onchange="updateMonth(this.value)"
                         class="bg-black/40 border border-white/10 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-primary/50 transition cursor-pointer w-full sm:w-auto min-w-[240px] shrink-0">
-                        <option value="season" selected>{{ t('index.recommended_season') }}</option>
-                        <option value="current">{{ t('index.live_current') }}</option>
-                        <option value="1">{{ t('index.jan_sim') }}</option>
-                        <option value="2">{{ t('index.feb_sim') }}</option>
-                        <option value="3">{{ t('index.mar_sim') }}</option>
-                        <option value="4">{{ t('index.apr_sim') }}</option>
-                        <option value="5">{{ t('index.may_sim') }}</option>
-                        <option value="6">{{ t('index.jun_sim') }}</option>
-                        <option value="7">{{ t('index.jul_sim') }}</option>
-                        <option value="8">{{ t('index.aug_sim') }}</option>
-                        <option value="9">{{ t('index.sep_sim') }}</option>
-                        <option value="10">{{ t('index.oct_sim') }}</option>
-                        <option value="11">{{ t('index.nov_sim') }}</option>
-                        <option value="12">{{ t('index.dec_sim') }}</option>
+                        <option value="season" selected>🌿 RECOMMENDED SEASON</option>
+                        <option value="current">⚡ LIVE / CURRENT</option>
+                        <option value="1">JAN (Simulation)</option>
+                        <option value="2">FEB (Simulation)</option>
+                        <option value="3">MAR (Simulation)</option>
+                        <option value="4">APR (Simulation)</option>
+                        <option value="5">MAY (Simulation)</option>
+                        <option value="6">JUN (Simulation)</option>
+                        <option value="7">JUL (Simulation)</option>
+                        <option value="8">AUG (Simulation)</option>
+                        <option value="9">SEP (Simulation)</option>
+                        <option value="10">OCT (Simulation)</option>
+                        <option value="11">NOV (Simulation)</option>
+                        <option value="12">DEC (Simulation)</option>
                     </select>
 
                     <!-- Units toggle (also visible inside the analysis modal) -->
                     <div id="units-toggle-modal"
                         class="bg-black/40 border border-white/10 rounded-lg px-1 py-1 flex shadow-lg h-9 items-center shrink-0">
                         <button onclick="setUnits('METRIC')" id="btn-metric-modal"
-                            class="px-3 py-1 rounded-lg text-xs font-bold bg-primary text-black transition">{{ t('index.metric') }}</button>
+                            class="px-3 py-1 rounded-lg text-xs font-bold bg-primary text-black transition">Metric</button>
                         <button onclick="setUnits('IMPERIAL')" id="btn-imperial-modal"
-                            class="px-3 py-1 rounded-lg text-xs font-bold text-gray-400 transition hover:text-white">{{ t('index.imperial') }}</button>
+                            class="px-3 py-1 rounded-lg text-xs font-bold text-gray-400 transition hover:text-white">Imperial</button>
                     </div>
 
                     <button id="water-managed-btn" type="button" aria-pressed="false" onclick="toggleWaterManaged()"
                         class="group inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition text-xs font-bold text-gray-300">
                         <span class="material-symbols-outlined text-base text-primary group-aria-[pressed=true]:text-yellow-300">water_drop</span>
-                        <span id="water-managed-label">{{ t('index.managed_water') }}</span>
+                        <span id="water-managed-label">Managed Water</span>
                     </button>
 
                     <button onclick="closeModal()"
@@ -224,7 +224,8 @@
                     <div
                         class="flex-1 bg-white/5 p-6 rounded-2xl border border-white/5 flex items-center justify-between">
                         <div>
-                            <div id="main-score-title" class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">{{ t('index.land_suitability_score') }}</div>
+                            <div id="main-score-title" class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">LAND
+                                SUITABILITY SCORE</div>
                             <div class="flex items-baseline gap-2">
                                 <span class="text-6xl font-black text-primary" id="score-val">0</span>
                                 <span class="text-xl text-gray-500 font-bold">/100</span>
@@ -237,21 +238,21 @@
                             <button id="btn-report" onclick="downloadReport()"
                                 class="flex items-center gap-2 bg-primary hover:bg-primary-hover text-[#181610] px-4 py-3 rounded-xl transition font-extrabold shadow-lg active:scale-95">
                                 <span id="btn-report-icon" class="material-symbols-outlined" style="font-size:22px;">description</span>
-                                <span id="btn-report-text" class="text-sm whitespace-nowrap">{{ t('index.get_pdf_report') }}</span>
+                                <span id="btn-report-text" class="text-sm whitespace-nowrap">GET PDF REPORT</span>
                             </button>
                             <button id="btn-share" onclick="shareResult()"
                                 class="bg-white/10 hover:bg-white/20 text-white px-4 py-3 rounded-xl transition flex items-center gap-2 active:scale-95">
                                 <span class="material-symbols-outlined" style="font-size:20px;">share</span>
-                                <span id="btn-share-text" class="text-sm font-bold">{{ t('index.share') }}</span>
+                                <span id="btn-share-text" class="text-sm font-bold">SHARE</span>
                             </button>
                             <div id="btn-report-hint" class="text-[11px] text-gray-400 text-right leading-tight max-w-[240px]">
-                                {{ t('index.report_hint') }}
+                                Opens the report preview. If locked, you can unlock the full PDF + 24h unlimited analyses.
                             </div>
                         </div>
                     </div>
                     <div class="flex-1 bg-white/5 p-6 rounded-2xl border border-white/5 flex items-center">
                         <div class="w-full">
-                            <div id="sys-title" class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-3">{{ t('index.summary_title') }}</div>
+                            <div id="sys-title" class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-3">SUMMARY</div>
                             <div class="prose prose-invert prose-sm text-sm text-gray-300 leading-snug"
                                 id="dynamic-text">
                                 ...
@@ -273,7 +274,7 @@
 <div id="unlimitedBadge" style="display:none; position:fixed; top:16px; right:16px; z-index:9999;
   padding:8px 12px; border-radius:999px; background:rgba(0,0,0,0.55); color:#fff; font:600 13px system-ui;
   border:1px solid rgba(255,255,255,0.14); backdrop-filter: blur(8px);">
-  {{ t('index.unlimited_active') }} • <span id="unlimitedCountdown">--</span>
+  🔓 Unlimited active • <span id="unlimitedCountdown">--</span>
 </div>
 
 </body>
