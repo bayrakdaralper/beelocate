@@ -78,6 +78,7 @@ def _extract_inputs(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         return {
             "schema": "details",
+            "lang": payload.get("lang"),
             "score": score,
             "lat": lat,
             "lon": lon,
@@ -154,6 +155,7 @@ def _extract_inputs(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         return {
             "schema": "cards",
+            "lang": payload.get("lang"),
             "score": score,
             "lat": lat,
             "lon": lon,
@@ -174,6 +176,7 @@ def _extract_inputs(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Worst case: minimal
     return {
         "schema": "minimal",
+        "lang": payload.get("lang"),
         "score": score,
         "lat": lat,
         "lon": lon,
@@ -289,78 +292,156 @@ def _fallback_template(inp: Dict[str, Any]) -> Dict[str, Any]:
     settlement_line = (settlement.get("val") or "")
     precip_line = (precip.get("val") or "")
 
-    verdict = (
-        f"This location scores {score}/100 for the {season}. "
-        f"Vegetation looks promising ({veg_line}). "
-        f"Water signal: {water_line}. "
-        f"Topography is defined by slope {slope_line} and aspect {aspect_line}, at ~{elev_line} elevation. "
-        f"Wind is {wind_line} and the flight window is about {flight_line}. "
-        f"Logistics: road ~{road_line}, nearest settlement ~{settlement_line}. "
-        f"Recent precipitation: {precip_line}."
-    ).strip()
+    lang = str(inp.get("lang") or "en").lower()
 
-    sections = {
-        "forage": (
-            f"Forage potential is primarily driven by the vegetation proxy in the {season}. "
-            f"Treat this as a seasonal signal (not species-level certainty) and align placement with the peak month if available. "
-            f"If land cover is fragmented, expect uneven forage distribution and plan apiary layout accordingly."
-        ),
-        "terrain": (
-            f"Terrain constraints come from slope ({slope_line}) and aspect ({aspect_line}). "
-            f"Prioritize safe, level hive pads to reduce labor and prevent tipping; keep handling/harvest paths in mind. "
-            f"If elevation is high (~{elev_line}), expect later phenology and shorter working windows."
-        ),
-        "climate": (
-            f"Flight activity is bounded by wind ({wind_line}) and the flight-window proxy ({flight_line} days/year). "
-            f"Use sheltered placement and windbreaks where exposure is high; reduce entrance exposure to prevailing winds. "
-            f"Cold-leaning conditions will suppress buildup; plan colony strength and timing conservatively."
-        ),
-        "access": (
-            f"Operational feasibility is shaped by access (road ~{road_line}) and proximity/pressure (settlement ~{settlement_line}). "
-            f"Remote sites can reduce disturbance but increase logistics cost; verify vehicle access under wet conditions. "
-            f"If water is not reliably detected ({water_line}), plan managed water or choose a nearby alternative."
-        ),
-    }
+    if lang == "tr":
+        season_str = "tavsiye edilen sezon" if season == "recommended season" else season
+        verdict = (
+            f"Bu lokasyon {season_str} için 100 üzerinden {score} puan alıyor. "
+            f"Vejetasyon sinyali belirgin ({veg_line}). "
+            f"Su durumu: {water_line}. "
+            f"Topografya eğim {slope_line} ve bakı {aspect_line} ile karakterize, rakım ~{elev_line}. "
+            f"Rüzgar {wind_line} ve tahmini uçuş penceresi {flight_line}. "
+            f"Lojistik: yol ~{road_line}, en yakın yerleşim ~{settlement_line}. "
+            f"Yağış durumu: {precip_line}."
+        ).strip()
 
-    return {
-        "verdict": verdict,
-        "why_this_score": [
-            "Vegetation proxy supports forage during the recommended window (seasonal signal, not species-level certainty).",
-            "Water availability is a key operational constraint; plan managed water if surface-water signals are weak.",
-            "Terrain and access determine real-world feasibility (pads, handling, vehicle access) even when ecology looks promising.",
-        ],
-        "general_interpretation": (
-            "This score summarizes ecological potential (forage/water) and operational constraints (terrain/access). "
-            "Treat it as a decision-support baseline and validate the top uncertainties on-site before committing." 
-        ),
-        "sections": sections,
-        "best_use_case": [
-            "Seasonal placement during the recommended window, timed to peak bloom.",
-            "Production focus if water is reliable; otherwise prioritize colony strength and risk management.",
-        ],
-        "next_checks": [
-            "Confirm dominant flowering plants within ~1–3 km and the real peak week on-site.",
-            "Verify water persistence through the hottest weeks (not just a one-off signal).",
-            "Confirm safe, level hive pads and vehicle access for setup and harvest.",
-        ],
-        "executive_summary": verdict,
-        "key_drivers": [
-            "Forage signal (NDVI/land cover) within the recommended window.",
-            "Water availability and summer heat management.",
-            "Topography (slope/aspect) affecting hive placement and access.",
-        ],
-        "risks": [
-            "If water is intermittent, colonies may shift from production to survival.",
-            "Steep or fragmented terrain can limit safe micro-sites and increase labor.",
-            "Wind exposure can reduce flight efficiency and increase stress.",
-        ],
-        "field_checks": [
-            "Confirm dominant flowering species within 1–3 km (local knowledge / field walk).",
-            "Verify seasonal water persistence (streams/ponds may be intermittent).",
-            "Inspect wind exposure at hive height; use windbreaks or sheltered placement.",
-            "Confirm vehicle access and safe, level pads for hives and harvesting.",
-        ],
-    }
+        sections = {
+            "forage": (
+                f"Nektar potansiyeli temel olarak {season_str} dönemindeki vejetasyon ile yönlendiriliyor. "
+                f"Bunu konuma özel bir bitki türü kesinliği olarak değil, dönemsel bir sinyal olarak değerlendirin. "
+                f"Parçalı arazi örtüsünde kaynaklar dağınık olabilir, arılık düzeninizi buna göre planlayın."
+            ),
+            "terrain": (
+                f"Arazi kısıtlamaları eğim ({slope_line}) ve bakıdan ({aspect_line}) kaynaklanıyor. "
+                f"Devrilmeyi önlemek ve işçiliği azaltmak için kovanları güvenli, düz zeminlere yerleştirmeye öncelik verin. "
+                f"Yüksek rakımlarda (~{elev_line}) fenolojinin gecikmesini ve çalışma süresinin kısalmasını bekleyin."
+            ),
+            "climate": (
+                f"Uçuş aktivitesi rüzgar ({wind_line}) ve simüle edilmiş uçuş günleriyle ({flight_line} gün/yıl) sınırlıdır. "
+                f"Açık alanlarda rüzgarkıran kullanın ve kovan uçuş deliklerini hakim rüzgardan koruyacak şekilde konumlandırın. "
+                f"Soğuk eğilimli hava koşulları gelişimi yavaşlatır; koloni gücünü buna göre planlayın."
+            ),
+            "access": (
+                f"Operasyonel uygunluk yol erişimi (~{road_line}) ve yerleşim baskısına (~{settlement_line}) bağlıdır. "
+                f"Uzak konumlar rahatsızlığı azaltır ancak lojistik maliyetini artırır; yağışlı havada araç erişimini teyit edin. "
+                f"Eğer su güvenilir saptanmadıysa ({water_line}), taşıma su planlayın veya alternatif konum arayın."
+            ),
+        }
+    else:
+        verdict = (
+            f"This location scores {score}/100 for the {season}. "
+            f"Vegetation looks promising ({veg_line}). "
+            f"Water signal: {water_line}. "
+            f"Topography is defined by slope {slope_line} and aspect {aspect_line}, at ~{elev_line} elevation. "
+            f"Wind is {wind_line} and the flight window is about {flight_line}. "
+            f"Logistics: road ~{road_line}, nearest settlement ~{settlement_line}. "
+            f"Recent precipitation: {precip_line}."
+        ).strip()
+
+        sections = {
+            "forage": (
+                f"Forage potential is primarily driven by the vegetation proxy in the {season}. "
+                f"Treat this as a seasonal signal (not species-level certainty) and align placement with the peak month if available. "
+                f"If land cover is fragmented, expect uneven forage distribution and plan apiary layout accordingly."
+            ),
+            "terrain": (
+                f"Terrain constraints come from slope ({slope_line}) and aspect ({aspect_line}). "
+                f"Prioritize safe, level hive pads to reduce labor and prevent tipping; keep handling/harvest paths in mind. "
+                f"If elevation is high (~{elev_line}), expect later phenology and shorter working windows."
+            ),
+            "climate": (
+                f"Flight activity is bounded by wind ({wind_line}) and the flight-window proxy ({flight_line} days/year). "
+                f"Use sheltered placement and windbreaks where exposure is high; reduce entrance exposure to prevailing winds. "
+                f"Cold-leaning conditions will suppress buildup; plan colony strength and timing conservatively."
+            ),
+            "access": (
+                f"Operational feasibility is shaped by access (road ~{road_line}) and proximity/pressure (settlement ~{settlement_line}). "
+                f"Remote sites can reduce disturbance but increase logistics cost; verify vehicle access under wet conditions. "
+                f"If water is not reliably detected ({water_line}), plan managed water or choose a nearby alternative."
+            ),
+        }
+
+    if lang == "tr":
+        return {
+            "verdict": verdict,
+            "why_this_score": [
+                "Vejetasyon sinyali önerilen dönem için nektar potansiyelini destekliyor (kesin tür tespiti değil, bölgesel yoğunluk).",
+                "Su durumu operasyonel bir kısıttır; su sinyali zayıfsa taşıma su/sulama planlayın.",
+                "Ekolojik durum iyi görünse de rüzgar, eğim ve erişim gibi faktörler sahadaki gerçek fizibiliteyi belirler.",
+            ],
+            "general_interpretation": (
+                "Bu puan, ekolojik potansiyeli (çiçeklenme/su) ve operasyonel kısıtları (arazi/erişim) özetler. "
+                "Karar destek rehberi olarak kullanın ve kesin bir yatırım yapmadan önce riskleri sahada doğrulayın." 
+            ),
+            "sections": sections,
+            "best_use_case": [
+                "En yoğun çiçeklenme zamanına göre ayarlanmış dönemsel (sezonluk) yerleşim.",
+                "Eğer su güvenilirse bal üretimi odaklı, aksi takdirde koloni güvencesine yönelik risk yönetimi.",
+            ],
+            "next_checks": [
+                "1-3 km çapındaki baskın çiçekli bitkileri ve gerçek yerel çiçeklenme zamanını sahada onaylayın.",
+                "Sıcak haftalarda su kaynaklarının devamlılığını kontrol edin (geçici su birikintisi olmadığından emin olun).",
+                "Kovan kuruluşu ve bal hasadı için güvenli, düz alanları ve araç iletişimini onaylayın.",
+            ],
+            "executive_summary": verdict,
+            "key_drivers": [
+                "Önerilen dönem içerisindeki vejetasyon (NDVI) sinyali.",
+                "Su durumu ve yaz aylarındaki sıcaklık baskısı (termal yönetim).",
+                "Kovan yerleşimi ve genel erişimi etkileyen topografya (eğim/bakı).",
+            ],
+            "risks": [
+                "Eğer su kesikli/geçiciyse, koloniler üretimden çok hayatta kalmaya odaklanabilir.",
+                "Dik veya parçalı araziler uygun mikro alanları kısıtlayıp işçiliği artırabilir.",
+                "Aşırı rüzgar baskısı uçuş verimliliğini düşürür ve koloni stresini artırır.",
+            ],
+            "field_checks": [
+                "1-3 km içindeki baskın çiçekli florayı ve lokal fenolojiyi yerel bilgi/saha yürüyüşü ile tespit edin.",
+                "Yaz mevsiminde su kalıcılığını teyit edin (bazı akarsu veya göletler tamamen kuruyabilir).",
+                "Kovan hizasındaki rüzgarı hissedin; aşırı rüzgar durumunda doğal/suni tel örgü-rüzgarkıran kullanın.",
+                "Ağır araçların yağış durumunda da alana kolay erişebileceğini ve hasat operasyonlarını yönetebileceğinizi test edin.",
+            ],
+        }
+    else:
+        return {
+            "verdict": verdict,
+            "why_this_score": [
+                "Vegetation proxy supports forage during the recommended window (seasonal signal, not species-level certainty).",
+                "Water availability is a key operational constraint; plan managed water if surface-water signals are weak.",
+                "Terrain and access determine real-world feasibility (pads, handling, vehicle access) even when ecology looks promising.",
+            ],
+            "general_interpretation": (
+                "This score summarizes ecological potential (forage/water) and operational constraints (terrain/access). "
+                "Treat it as a decision-support baseline and validate the top uncertainties on-site before committing." 
+            ),
+            "sections": sections,
+            "best_use_case": [
+                "Seasonal placement during the recommended window, timed to peak bloom.",
+                "Production focus if water is reliable; otherwise prioritize colony strength and risk management.",
+            ],
+            "next_checks": [
+                "Confirm dominant flowering plants within ~1–3 km and the real peak week on-site.",
+                "Verify water persistence through the hottest weeks (not just a one-off signal).",
+                "Confirm safe, level hive pads and vehicle access for setup and harvest.",
+            ],
+            "executive_summary": verdict,
+            "key_drivers": [
+                "Forage signal (NDVI/land cover) within the recommended window.",
+                "Water availability and summer heat management.",
+                "Topography (slope/aspect) affecting hive placement and access.",
+            ],
+            "risks": [
+                "If water is intermittent, colonies may shift from production to survival.",
+                "Steep or fragmented terrain can limit safe micro-sites and increase labor.",
+                "Wind exposure can reduce flight efficiency and increase stress.",
+            ],
+            "field_checks": [
+                "Confirm dominant flowering species within 1–3 km (local knowledge / field walk).",
+                "Verify seasonal water persistence (streams/ponds may be intermittent).",
+                "Inspect wind exposure at hive height; use windbreaks or sheltered placement.",
+                "Confirm vehicle access and safe, level pads for hives and harvesting.",
+            ],
+        }
 
 
 def generate_ai_insights(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -382,13 +463,26 @@ def generate_ai_insights(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Compact JSON the model can reliably digest.
     data_blob = json.dumps(inp, ensure_ascii=False)
 
-    system = (
-        "You are a senior beekeeping site-suitability analyst writing customer-facing expert commentary. "
-        "Use ONLY the provided metrics. Do NOT invent flowering species, crops, yields, or local facts. "
-        "If a metric is missing, say 'Unknown' rather than guessing. "
-        "Write like an experienced beekeeper: practical, concrete, and calm—no hype. "
-        "When you make a recommendation, tie it to a metric (NDVI, slope %, wind, flight days, distances, elevation, water signal)."
-    )
+    lang = str(inp.get("lang") or "en").lower()
+
+    if lang == "tr":
+        system = (
+            "Sen müşteriye dönük uzman raporları hazırlayan kıdemli bir arıcılık saha uygunluk analistisin. "
+            "SADECE verilen metrikleri kullan. Çiçek türleri, mahsuller, rekolteler veya yerel gerçekler UYDURMA. "
+            "Eğer bir metrik eksikse tahmin etmek yerine 'Bilinmiyor' de. "
+            "Deneyimli bir arıcı gibi yaz: pratik, somut ve sakin—abartı yok. "
+            "Bir tavsiyede bulunduğunda, bunu bir metriğe bağla (NDVI, eğim %, rüzgar, uçuş günleri, mesafeler, rakım, su sinyali)."
+        )
+        user_lang_instruction = "ÖNEMLİ: Tüm yanıtını tamamen TÜRKÇE (Turkish) dilinde yaz. JSON anahtarlarını (keys) İngilizce bırak, ancak tüm metin içeriklerini Türkçe oluştur."
+    else:
+        system = (
+            "You are a senior beekeeping site-suitability analyst writing customer-facing expert commentary. "
+            "Use ONLY the provided metrics. Do NOT invent flowering species, crops, yields, or local facts. "
+            "If a metric is missing, say 'Unknown' rather than guessing. "
+            "Write like an experienced beekeeper: practical, concrete, and calm—no hype. "
+            "When you make a recommendation, tie it to a metric (NDVI, slope %, wind, flight days, distances, elevation, water signal)."
+        )
+        user_lang_instruction = "IMPORTANT: Write your entire response in English."
 
     user = (
         "Return ONLY a valid JSON object. No markdown. No backticks.\n\n"
@@ -411,6 +505,7 @@ def generate_ai_insights(payload: Dict[str, Any]) -> Dict[str, Any]:
         "- If a value is missing, say 'Unknown' (do not guess).\n"
         "- Do not ask questions.\n"
         "- Avoid generic filler like 'confirm on-site' unless tied to a specific uncertainty (water, access, slope micro-sites, exposure).\n\n"
+        f"{user_lang_instruction}\n\n"
         f"INPUT_METRICS={data_blob}"
     )
 

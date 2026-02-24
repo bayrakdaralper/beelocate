@@ -147,6 +147,25 @@ except Exception:
 
 app = Flask(__name__)
 
+import i18n
+
+@app.context_processor
+def inject_i18n():
+    return dict(t=i18n.t, current_lang=i18n.get_lang())
+
+@app.template_filter('format_number')
+def format_number(value, decimals=0):
+    try:
+        val = float(value)
+        lang = i18n.get_lang()
+        # Format the number, e.g., "1,234.56"
+        fs = f"{{:,.{decimals}f}}".format(val)
+        if lang == 'tr':
+            # Swap comma and dot for Turkish locale: "1.234,56"
+            fs = fs.replace(',', 'X').replace('.', ',').replace('X', '.')
+        return fs
+    except (ValueError, TypeError):
+        return value
 
 
 # ----------------------------
@@ -3426,14 +3445,10 @@ def build_report_context(payload: dict) -> dict:
     # General comment
     general_comment = payload.get("general_comment")
     if not general_comment:
-        general_comment = (
-            "This location shows a mix of ecological potential and operational constraints. "
-            "Use the score as a decision-support summary: the best outcomes usually happen when "
-            "vegetation continuity aligns with a suitable season window, and practical factors "
-            "(access, slope, and local pressure) are acceptable."
-        )
+        general_comment = i18n.t("report.general_comment_fallback", lang=lang)
         if season_meta and season_meta.get("peak_month"):
-            general_comment += f" Recommended season for this area: {_season_label_en(season_meta)}."
+            sl = _season_label_tr(season_meta) if lang == 'tr' else _season_label_en(season_meta)
+            general_comment += " " + i18n.t("report.recommended_season_for_area", lang=lang, label=sl)
 
 
     # If AI generated premium sections, prefer them for "Why this score" and the general interpretation.
@@ -3444,17 +3459,9 @@ def build_report_context(payload: dict) -> dict:
         if ai.get("general_interpretation"):
             general_comment = ai.get("general_interpretation") or general_comment
 
-    methodology_note = payload.get(
-        "methodology_note",
-        "NDVI is a vegetation density indicator (not plant species). Climate metrics are long-term reanalysis summaries. "
-        "BeeLocate PRO is a decision-support tool and does not guarantee outcomes."
-    )
+    methodology_note = payload.get("methodology_note") or i18n.t("report.methodology_note_text", lang=lang)
 
-    legal_disclaimer = payload.get(
-        "legal_disclaimer",
-        "This report is generated from satellite and spatial analysis data and is provided for decision support only. "
-        "Results may vary with season, management practices, and on-site conditions; no yield, income, or colony-health guarantee is implied."
-    )
+    legal_disclaimer = payload.get("legal_disclaimer") or i18n.t("report.legal_disclaimer_text", lang=lang)
 
     report_date = payload.get("report_date") or datetime.now().strftime("%Y-%m-%d")
 
@@ -4080,6 +4087,16 @@ def report_pdf(rid: str):
     return resp
 
 
+@app.route("/set-lang", methods=["GET", "POST"])
+def set_lang():
+    lang = request.args.get('lang') or request.form.get('lang') or 'en'
+    lang = lang.strip().lower()
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    # Set cookie for 1 year
+    resp.set_cookie("blp_lang", lang, max_age=60*60*24*365, path="/")
+    return resp
+
+
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
@@ -4119,7 +4136,7 @@ def analyze():
         if not GEE_OK:
             return jsonify({
                 'ok': False,
-                'error': 'Earth Engine is not available right now (network/permissions).',
+                'error': i18n.t('api.service_unavailable', default_text='Service Unavailable', lang=lang),
                 'gee_ok': False
             })
 
@@ -4132,13 +4149,13 @@ def analyze():
         water_managed = bool(d.get("water_managed") or (d.get("water_strategy") == "managed"))
 
         if lat is None or lon is None:
-            return jsonify({"error": "Missing coordinates"}), 400
+            return jsonify({"error": i18n.t("api.please_select_location", lang=lang)}), 400
 
         try:
             lat = float(lat)
             lon = float(lon)
         except Exception:
-            return jsonify({"error": "Invalid coordinates"}), 400
+            return jsonify({"error": i18n.t("api.please_select_location", lang=lang)}), 400
 
         try:
             rad = float(rad)
@@ -4276,6 +4293,7 @@ def analyze():
 
         resp = {
             "score": score,
+            "lang": lang,
             "lat": lat,
             "lon": lon,
             "lng": lon,
@@ -4320,29 +4338,34 @@ def analyze():
         import traceback
         traceback.print_exc()
 
+        lang = i18n.get_lang()
+        err_msg = i18n.t("api.sys_error", default_text="Sistem Hatası", lang=lang)
+        err_val = i18n.t("api.err_flora", default_text="Hata", lang=lang)
+        err_urb = i18n.t("api.err_urban", default_text="Bilinmiyor/Unknown", lang=lang)
+
         return jsonify(
             {
                 "score": 0,
-                "sys_msg": "Sistem Hatası",
+                "sys_msg": err_msg,
                 "details": {
-                    "flora": ensure_schema({}, default_label="Hata"),
-                    "water": ensure_schema({}, default_label="Hata"),
-                    "urban": ensure_schema({}, default_label="Hata"),
-                    "transport": ensure_schema({}, default_label="Hata"),
-                    "precip": ensure_schema({}, default_label="Hata"),
-                    "settlement": ensure_schema({}, default_label="Hata"),
-                    "elevation": ensure_schema({}, default_label="Hata"),
-                    "slope": ensure_schema({}, default_label="Hata"),
-                    "aspect": ensure_schema({}, default_label="Hata"),
+                    "flora": ensure_schema({}, default_label=err_val),
+                    "water": ensure_schema({}, default_label=err_val),
+                    "urban": ensure_schema({}, default_label=err_urb),
+                    "transport": ensure_schema({}, default_label=err_val),
+                    "precip": ensure_schema({}, default_label=err_val),
+                    "settlement": ensure_schema({}, default_label=err_val),
+                    "elevation": ensure_schema({}, default_label=err_val),
+                    "slope": ensure_schema({}, default_label=err_val),
+                    "aspect": ensure_schema({}, default_label=err_val),
                     "climate": {
-                        "temp": ensure_schema({}, default_label="Hata"),
-                        "wind": ensure_schema({}, default_label="Hata"),
-                        "humidity": ensure_schema({}, default_label="Hata"),
+                        "temp": ensure_schema({}, default_label=err_val),
+                        "wind": ensure_schema({}, default_label=err_val),
+                        "humidity": ensure_schema({}, default_label=err_val),
                     },
                     "topography": {
-                        "elevation": ensure_schema({}, default_label="Hata"),
-                        "slope": ensure_schema({}, default_label="Hata"),
-                        "aspect": ensure_schema({}, default_label="Hata"),
+                        "elevation": ensure_schema({}, default_label=err_val),
+                        "slope": ensure_schema({}, default_label=err_val),
+                        "aspect": ensure_schema({}, default_label=err_val),
                     },
                 },
             }
